@@ -1,0 +1,14 @@
+x11perf - X11 performance program, version 1.2
+The X.Org Foundation server version 12101018 on :0
+from MAD-A1200
+Sun Jul 19 01:14:01 2026
+
+Sync time adjustment is 0.0000 msecs.
+
+       3600 reps @   0.2420 msec (  4130.0/sec): 100x100 rectangle
+       3600 reps @   0.1950 msec (  5130.0/sec): 100x100 rectangle
+       3600 reps @   0.1928 msec (  5190.0/sec): 100x100 rectangle
+       3600 reps @   0.1936 msec (  5170.0/sec): 100x100 rectangle
+       3600 reps @   0.1941 msec (  5150.0/sec): 100x100 rectangle
+      18000 trep @   0.2035 msec (  4910.0/sec): 100x100 rectangle
+

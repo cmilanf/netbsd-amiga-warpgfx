@@ -1,0 +1,14 @@
+x11perf - X11 performance program, version 1.2
+The X.Org Foundation server version 12101018 on :0
+from MAD-A1200
+Sun Jul 19 01:14:26 2026
+
+Sync time adjustment is 0.0000 msecs.
+
+        400 reps @   3.9134 msec (   256.0/sec): Copy 100x100 from window to window
+        400 reps @   3.7261 msec (   268.0/sec): Copy 100x100 from window to window
+        400 reps @   3.6216 msec (   276.0/sec): Copy 100x100 from window to window
+        400 reps @   3.4560 msec (   289.0/sec): Copy 100x100 from window to window
+        400 reps @   3.4442 msec (   290.0/sec): Copy 100x100 from window to window
+       2000 trep @   3.6323 msec (   275.0/sec): Copy 100x100 from window to window
+
