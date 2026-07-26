@@ -1,0 +1,462 @@
+diff --git a/external/mit/xf86-video-wsfb/dist/man/wsfb.man b/external/mit/xf86-video-wsfb/dist/man/wsfb.man
+index 5057579055bbf59002fe692812a5b7acd56b3e3e..ae26a5b361af36227ff3b00fe9f579f2409fd69a 100644
+--- a/external/mit/xf86-video-wsfb/dist/man/wsfb.man
++++ b/external/mit/xf86-video-wsfb/dist/man/wsfb.man
+@@ -43,7 +43,8 @@ wsfb \- video driver for wsdisplay framebuffer device
+ .B wsfb
+ is an __xservername__ driver for OpenBSD and NetBSD
+ wsdisplay framebuffer devices.
+-This is a non-accelerated driver. 
++On NetBSD, solid fills and framebuffer copies can be accelerated when the
++wsdisplay driver implements the standard blitter ioctls.
+ The following framebuffer depths are supported: 1, 8, 16 and 24, given
+ that the wsdisplay device underneath supports them.
+ .br
+@@ -89,6 +90,16 @@ Default: on for depths were it is supported, off otherwise.
+ .br
+ ShadowFB is currently not supported on monochrome displays.
+ .TP
++.BI "Option \*qAccel\*q \*q" boolean \*q
++Enable or disable EXA solid-fill and framebuffer-copy acceleration.
++Acceleration currently requires a 16-bit RGB framebuffer, a supporting
++NetBSD wsdisplay driver, and
++.B ShadowFB
++must be disabled.
++Other rendering operations, including Composite and 3D, remain software
++rendered.
++Default: on when available.
++.TP
+ .BI "Option \*qRotate\*q \*q" string \*q
+ Enable rotation of the display. The supported values are "CW" (clockwise,
+ 90 degrees), "UD" (upside down, 180 degrees) and "CCW" (counter clockwise,
+diff --git a/external/mit/xf86-video-wsfb/dist/src/wsfb.h b/external/mit/xf86-video-wsfb/dist/src/wsfb.h
+index e3a33463bea2e1aa1655aa5f8f14ba1ce508b1bb..12216c456334cb5f06c9f6b485c6e6b01430984d 100644
+--- a/external/mit/xf86-video-wsfb/dist/src/wsfb.h
++++ b/external/mit/xf86-video-wsfb/dist/src/wsfb.h
+@@ -35,6 +35,13 @@
+  * Authors:  Alan Hourihane, <alanh@fairlite.demon.co.uk>
+  *	     Michel Dänzer, <michdaen@iiic.ethz.ch>
+  */
++
++/*
++ * wsdisplay EXA extensions:
++ * Copyright (c) 2026 Carlos Milán Figueredo
++ * with assistance from OpenAI gpt-5.6-sol
++ * Distributed under the two-clause BSD license above.
++ */
+  
+ #include <fcntl.h>
+ #include <sys/types.h>
+@@ -61,6 +68,10 @@
+ #define HAVE_SHADOW_AFB
+ #endif
+ 
++#if defined(__NetBSD__) && defined(WSDISPLAYIO_DOBLIT)
++#define HAVE_WSFB_EXA
++#endif
++
+ /* private data */
+ typedef struct {
+ 	int			fd; /* file descriptor of open device */
+@@ -74,6 +85,13 @@ typedef struct {
+ 	Bool			HWCursor;
+ 	Bool			useSwap32;
+ 	Bool			useRGB16ToYUY2;
++#ifdef HAVE_WSFB_EXA
++	Bool			accel;
++	Bool			exa_active;
++	Pixel			exa_fg;
++	uint32_t		exa_src_y;
++	struct _ExaDriver	*pExa;
++#endif
+ #ifdef HAVE_SHADOW_AFB
+ 	Bool			planarAfb;
+ #endif
+@@ -97,5 +115,8 @@ typedef struct {
+ #define WSFBPTR(p) ((WsfbPtr)((p)->driverPrivate))
+ 
+ Bool WsfbSetupCursor(ScreenPtr);
++#ifdef HAVE_WSFB_EXA
++Bool WsfbEXAInit(ScreenPtr);
++#endif
+ 
+ #endif
+diff --git a/external/mit/xf86-video-wsfb/dist/src/wsfb_driver.c b/external/mit/xf86-video-wsfb/dist/src/wsfb_driver.c
+index d8b59a6e589756429fcba41dd112bdf6e418f1c8..200127e6ec842bda38244826e6b1f7efeadfb1f8 100644
+--- a/external/mit/xf86-video-wsfb/dist/src/wsfb_driver.c
++++ b/external/mit/xf86-video-wsfb/dist/src/wsfb_driver.c
+@@ -35,6 +35,13 @@
+  *	     Michel Dänzer, <michdaen@iiic.ethz.ch>
+  */
+ 
++/*
++ * wsdisplay EXA extensions:
++ * Copyright (c) 2026 Carlos Milán Figueredo
++ * with assistance from OpenAI gpt-5.6-sol
++ * Distributed under the two-clause BSD license above.
++ */
++
+ #ifdef HAVE_CONFIG_H
+ #include "config.h"
+ #endif
+@@ -186,6 +193,7 @@ static SymTabRec WsfbChipsets[] = {
+ /* Supported options */
+ typedef enum {
+ 	OPTION_SHADOW_FB,
++	OPTION_ACCEL,
+ 	OPTION_ROTATE,
+ 	OPTION_HW_CURSOR,
+ 	OPTION_SW_CURSOR
+@@ -193,6 +201,7 @@ typedef enum {
+ 
+ static const OptionInfoRec WsfbOptions[] = {
+ 	{ OPTION_SHADOW_FB, "ShadowFB", OPTV_BOOLEAN, {0}, FALSE},
++	{ OPTION_ACCEL, "Accel", OPTV_BOOLEAN, {1}, FALSE},
+ 	{ OPTION_ROTATE, "Rotate", OPTV_STRING, {0}, FALSE},
+ 	{ OPTION_HW_CURSOR, "HWCursor", OPTV_BOOLEAN, {1}, FALSE},
+ 	{ -1, NULL, OPTV_NONE, {0}, FALSE}
+@@ -751,6 +760,11 @@ WsfbPreInit(ScrnInfoPtr pScrn, int flags)
+ 			return FALSE;
+ 	}
+ 
++#ifdef HAVE_WSFB_EXA
++	fPtr->accel = !fPtr->shadowFB &&
++	    xf86ReturnOptValBool(fPtr->Options, OPTION_ACCEL, TRUE);
++#endif
++
+ 	/* Visual init */
+ 	if (!xf86SetDefaultVisual(pScrn, -1))
+ 		return FALSE;
+@@ -1165,6 +1179,21 @@ WsfbScreenInit(SCREEN_INIT_ARGS_DECL)
+ 		return FALSE;
+ 	}
+ 
++#ifdef HAVE_WSFB_EXA
++	if (fPtr->accel) {
++		if (xf86LoadSubModule(pScrn, "exa") == NULL) {
++			xf86DrvMsg(pScrn->scrnIndex, X_WARNING,
++			    "Cannot load EXA; using software rendering\n");
++		} else if (WsfbEXAInit(pScreen)) {
++			xf86DrvMsg(pScrn->scrnIndex, X_INFO,
++			    "Using wsdisplay EXA fill/copy acceleration\n");
++		} else {
++			xf86DrvMsg(pScrn->scrnIndex, X_INFO,
++			    "No wsdisplay blitter; using software rendering\n");
++		}
++	}
++#endif
++
+ #ifdef XFreeXDGA
+ 	if (!fPtr->rotate)
+ 		WsfbDGAInit(pScrn, pScreen);
+@@ -1277,6 +1306,7 @@ WsfbCloseScreen(CLOSE_SCREEN_ARGS_DECL)
+ 	ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+ 	PixmapPtr pPixmap;
+ 	WsfbPtr fPtr = WSFBPTR(pScrn);
++	Bool ret;
+ 
+ 
+ 	TRACE_ENTER("WsfbCloseScreen");
+@@ -1306,7 +1336,14 @@ WsfbCloseScreen(CLOSE_SCREEN_ARGS_DECL)
+ 	/* Unwrap CloseScreen. */
+ 	pScreen->CloseScreen = fPtr->CloseScreen;
+ 	TRACE_EXIT("WsfbCloseScreen");
+-	return (*pScreen->CloseScreen)(CLOSE_SCREEN_ARGS);
++	ret = (*pScreen->CloseScreen)(CLOSE_SCREEN_ARGS);
++#ifdef HAVE_WSFB_EXA
++	if (fPtr->pExa != NULL) {
++		free(fPtr->pExa);
++		fPtr->pExa = NULL;
++	}
++#endif
++	return ret;
+ }
+ 
+ static void *
+diff --git a/external/mit/xf86-video-wsfb/dist/src/wsfb_exa.c b/external/mit/xf86-video-wsfb/dist/src/wsfb_exa.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..d8991f0e0531fe92923c57f73899e9035522f129
+--- /dev/null
++++ b/external/mit/xf86-video-wsfb/dist/src/wsfb_exa.c
+@@ -0,0 +1,281 @@
++/*-
++ * Copyright (c) 2026 Carlos Milán Figueredo
++ * with assistance from OpenAI gpt-5.6-sol
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
++ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
++ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
++ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
++ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
++ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
++ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ */
++
++#ifdef HAVE_CONFIG_H
++#include "config.h"
++#endif
++
++#include <errno.h>
++#include <limits.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
++#include <sys/ioctl.h>
++
++#include "xorg-server.h"
++#include "xf86.h"
++#include "wsfb.h"
++#include "exa.h"
++
++#ifdef HAVE_WSFB_EXA
++
++static Bool
++WsfbEXAFullPlanemask(PixmapPtr pPixmap, Pixel planemask)
++{
++	Pixel mask;
++
++	if ((unsigned int)pPixmap->drawable.depth >= sizeof(Pixel) * 8)
++		mask = ~(Pixel)0;
++	else
++		mask = ((Pixel)1 << pPixmap->drawable.depth) - 1;
++
++	return (planemask & mask) == mask;
++}
++
++static Bool
++WsfbEXAPixmapOffset(WsfbPtr fPtr, PixmapPtr pPixmap, uint32_t *y)
++{
++	unsigned long offset, pitch;
++
++	/* The wsdisplay blit ABI has one fixed pitch and absolute coordinates. */
++	pitch = exaGetPixmapPitch(pPixmap);
++	offset = exaGetPixmapOffset(pPixmap);
++	if (pitch != fPtr->fbi.fbi_stride || pitch == 0 ||
++	    offset >= fPtr->fbi.fbi_fbsize || offset % pitch != 0 ||
++	    offset / pitch > UINT32_MAX)
++		return FALSE;
++
++	*y = (uint32_t)(offset / pitch);
++	return TRUE;
++}
++
++static void
++WsfbEXADisable(ScrnInfoPtr pScrn, const char *operation)
++{
++	WsfbPtr fPtr = WSFBPTR(pScrn);
++
++	if (fPtr->exa_active) {
++		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
++		    "wsdisplay %s blit failed: %s; disabling acceleration\n",
++		    operation, strerror(errno));
++	}
++	fPtr->exa_active = FALSE;
++}
++
++static void
++WsfbEXAWaitMarker(ScreenPtr pScreen, int marker)
++{
++	ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
++	WsfbPtr fPtr = WSFBPTR(pScrn);
++	struct wsdisplayio_blit blit;
++
++	if (!fPtr->exa_active)
++		return;
++
++	memset(&blit, 0, sizeof(blit));
++	blit.serial = (uint32_t)marker;
++	if (ioctl(fPtr->fd, WSDISPLAYIO_WAITBLIT, &blit) == -1)
++		WsfbEXADisable(pScrn, "wait");
++}
++
++static Bool
++WsfbEXAPrepareSolid(PixmapPtr pPixmap, int alu, Pixel planemask, Pixel fg)
++{
++	ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
++	WsfbPtr fPtr = WSFBPTR(pScrn);
++	uint32_t y;
++
++	if (!fPtr->exa_active || pPixmap->drawable.bitsPerPixel != 16 ||
++	    alu != GXcopy || !WsfbEXAFullPlanemask(pPixmap, planemask) ||
++	    !WsfbEXAPixmapOffset(fPtr, pPixmap, &y))
++		return FALSE;
++
++	fPtr->exa_fg = fg;
++	return TRUE;
++}
++
++static void
++WsfbEXASolid(PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
++{
++	ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
++	WsfbPtr fPtr = WSFBPTR(pScrn);
++	struct wsdisplayio_blit blit;
++	uint32_t y;
++
++	if (!fPtr->exa_active)
++		return;
++	if (!WsfbEXAPixmapOffset(fPtr, pPixmap, &y) || x1 < 0 || y1 < 0 ||
++	    x2 <= x1 || y2 <= y1 || (uint64_t)y1 + y > UINT32_MAX) {
++		errno = EINVAL;
++		WsfbEXADisable(pScrn, "solid");
++		return;
++	}
++
++	memset(&blit, 0, sizeof(blit));
++	blit.op = WSFB_BLIT_FILL;
++	blit.dstx = (uint32_t)x1;
++	blit.dsty = (uint32_t)y1 + y;
++	blit.width = (uint32_t)(x2 - x1);
++	blit.height = (uint32_t)(y2 - y1);
++	blit.pen = (uint32_t)fPtr->exa_fg;
++	if (ioctl(fPtr->fd, WSDISPLAYIO_DOBLIT, &blit) == -1)
++		WsfbEXADisable(pScrn, "solid");
++}
++
++static void
++WsfbEXADoneSolid(PixmapPtr pPixmap)
++{
++	(void)pPixmap;
++}
++
++static Bool
++WsfbEXAPrepareCopy(PixmapPtr pSrcPixmap, PixmapPtr pDstPixmap, int xdir,
++    int ydir, int alu, Pixel planemask)
++{
++	ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
++	WsfbPtr fPtr = WSFBPTR(pScrn);
++	uint32_t dst_y;
++
++	(void)xdir;
++	(void)ydir;
++
++	if (!fPtr->exa_active ||
++	    pSrcPixmap->drawable.bitsPerPixel != 16 ||
++	    pDstPixmap->drawable.bitsPerPixel != 16 || alu != GXcopy ||
++	    !WsfbEXAFullPlanemask(pDstPixmap, planemask) ||
++	    !WsfbEXAPixmapOffset(fPtr, pSrcPixmap, &fPtr->exa_src_y) ||
++	    !WsfbEXAPixmapOffset(fPtr, pDstPixmap, &dst_y))
++		return FALSE;
++
++	return TRUE;
++}
++
++static void
++WsfbEXACopy(PixmapPtr pDstPixmap, int src_x, int src_y, int dst_x,
++    int dst_y, int width, int height)
++{
++	ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
++	WsfbPtr fPtr = WSFBPTR(pScrn);
++	struct wsdisplayio_blit blit;
++	uint32_t y;
++
++	if (!fPtr->exa_active)
++		return;
++	if (!WsfbEXAPixmapOffset(fPtr, pDstPixmap, &y) || src_x < 0 ||
++	    src_y < 0 || dst_x < 0 || dst_y < 0 || width <= 0 ||
++	    height <= 0 || (uint64_t)src_y + fPtr->exa_src_y > UINT32_MAX ||
++	    (uint64_t)dst_y + y > UINT32_MAX) {
++		errno = EINVAL;
++		WsfbEXADisable(pScrn, "copy");
++		return;
++	}
++
++	memset(&blit, 0, sizeof(blit));
++	blit.op = WSFB_BLIT_COPY;
++	blit.srcx = (uint32_t)src_x;
++	blit.srcy = (uint32_t)src_y + fPtr->exa_src_y;
++	blit.dstx = (uint32_t)dst_x;
++	blit.dsty = (uint32_t)dst_y + y;
++	blit.width = (uint32_t)width;
++	blit.height = (uint32_t)height;
++	if (ioctl(fPtr->fd, WSDISPLAYIO_DOBLIT, &blit) == -1)
++		WsfbEXADisable(pScrn, "copy");
++}
++
++static void
++WsfbEXADoneCopy(PixmapPtr pDstPixmap)
++{
++	(void)pDstPixmap;
++}
++
++Bool
++WsfbEXAInit(ScreenPtr pScreen)
++{
++	ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
++	WsfbPtr fPtr = WSFBPTR(pScrn);
++	ExaDriverPtr pExa;
++	struct wsdisplayio_blit blit;
++	size_t memory_size, visible_size;
++
++	if (fPtr->fbi.fbi_bitsperpixel != 16 ||
++	    fPtr->fbi.fbi_pixeltype != WSFB_RGB ||
++	    fPtr->fbi.fbi_stride == 0 ||
++	    fPtr->fbi.fbi_stride > INT_MAX ||
++	    fPtr->fbi.fbi_width > INT_MAX ||
++	    fPtr->fbi.fbi_fbsize > SIZE_MAX ||
++	    fPtr->fbi.fbi_height > SIZE_MAX / fPtr->fbi.fbi_stride)
++		return FALSE;
++
++	memset(&blit, 0, sizeof(blit));
++	if (ioctl(fPtr->fd, WSDISPLAYIO_WAITBLIT, &blit) == -1)
++		return FALSE;
++
++	memory_size = (size_t)fPtr->fbi.fbi_fbsize;
++	memory_size -= memory_size % fPtr->fbi.fbi_stride;
++	visible_size = (size_t)fPtr->fbi.fbi_stride *
++	    fPtr->fbi.fbi_height;
++	if (memory_size < visible_size ||
++	    memory_size / fPtr->fbi.fbi_stride > INT_MAX)
++		return FALSE;
++
++	pExa = exaDriverAlloc();
++	if (pExa == NULL)
++		return FALSE;
++
++	fPtr->pExa = pExa;
++	fPtr->exa_active = TRUE;
++
++	pExa->exa_major = EXA_VERSION_MAJOR;
++	pExa->exa_minor = EXA_VERSION_MINOR;
++	pExa->memoryBase = fPtr->fbstart;
++	pExa->memorySize = memory_size;
++	pExa->offScreenBase = visible_size;
++	pExa->pixmapOffsetAlign = (int)fPtr->fbi.fbi_stride;
++	pExa->pixmapPitchAlign = (int)fPtr->fbi.fbi_stride;
++	pExa->flags = EXA_OFFSCREEN_PIXMAPS | EXA_MIXED_PIXMAPS;
++	pExa->maxX = (int)fPtr->fbi.fbi_width;
++	pExa->maxY = (int)(memory_size / fPtr->fbi.fbi_stride);
++
++	pExa->WaitMarker = WsfbEXAWaitMarker;
++	/* DOBLIT completes synchronously, so these hooks need no exaMarkSync(). */
++	pExa->PrepareSolid = WsfbEXAPrepareSolid;
++	pExa->Solid = WsfbEXASolid;
++	pExa->DoneSolid = WsfbEXADoneSolid;
++	pExa->PrepareCopy = WsfbEXAPrepareCopy;
++	pExa->Copy = WsfbEXACopy;
++	pExa->DoneCopy = WsfbEXADoneCopy;
++
++	if (!exaDriverInit(pScreen, pExa)) {
++		fPtr->exa_active = FALSE;
++		fPtr->pExa = NULL;
++		free(pExa);
++		return FALSE;
++	}
++
++	return TRUE;
++}
++
++#endif /* HAVE_WSFB_EXA */

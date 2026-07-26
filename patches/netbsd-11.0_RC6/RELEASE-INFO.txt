@@ -1,0 +1,9 @@
+WarpGFX release patch set
+label:       netbsd-11.0_RC6
+src commit:  5f3f31427306f722c40a286d23b324c2b4bddf6f
+xsrc commit: 6ae477271c420cdacae3c18ea6fcf41cc6b9c67d
+src url:     https://github.com/NetBSD/src.git
+xsrc url:    https://github.com/NetBSD/xsrc.git
+rebased from canonical base:
+  SRC_BASE:  c4432964a2fc5fc62bd8f36699e5798c45cd569b
+  XSRC_BASE: b8a0c79d92d984f132704159c17dc18ee9515e3c
