@@ -30,6 +30,15 @@
 #define _AMIGA_DEV_WARPGFXREG_H_
 
 /*
+ * WarpGFX driver software version.
+ *
+ * This is the version of this driver, independent of the NetBSD base it is
+ * built against and of any (unread) Warp board firmware.  It is available
+ * through the read-only hw.warpgfx.version sysctl.
+ */
+#define WARPGFX_VERSION		"1.0"
+
+/*
  * CS-Lab Warp GFX interface.
  *
  * These definitions were derived from the public Zorro configuration

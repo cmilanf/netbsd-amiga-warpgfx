@@ -63,6 +63,7 @@ __KERNEL_RCSID(0, "$NetBSD$");
 #include <sys/errno.h>
 #include <sys/stdbool.h>
 #include <sys/stdint.h>
+#include <sys/sysctl.h>
 #include <sys/systm.h>
 #include <sys/types.h>
 
@@ -258,8 +259,9 @@ struct warpgfx_softc {
 	struct vcons_data sc_vd;
 	struct wsscreen_descr sc_defaultscreen;
 	struct wsscreen_descr sc_80x25screen;
+	struct wsscreen_descr sc_80x27screen;
 	struct wsscreen_list sc_screenlist;
-	const struct wsscreen_descr *sc_screens[2];
+	const struct wsscreen_descr *sc_screens[3];
 
 	u_int sc_wsmode;
 	u_int sc_width;
@@ -325,6 +327,29 @@ int warpgfxcngetc(dev_t);
 
 CFATTACH_DECL_NEW(warpgfx, sizeof(struct warpgfx_softc),
     warpgfx_match, warpgfx_attach, NULL, NULL);
+
+/*
+ * Expose the driver software version as a read-only string sysctl,
+ * hw.warpgfx.version, so it can be queried from userland (e.g.
+ * "sysctl hw.warpgfx.version") without emitting anything at boot.
+ */
+static const char warpgfx_version[] = WARPGFX_VERSION;
+
+SYSCTL_SETUP(sysctl_hw_warpgfx_setup, "sysctl hw.warpgfx setup")
+{
+	const struct sysctlnode *rnode = NULL;
+
+	if (sysctl_createv(clog, 0, NULL, &rnode,
+	    CTLFLAG_PERMANENT, CTLTYPE_NODE, "warpgfx",
+	    SYSCTL_DESCR("CS-Lab Warp GFX driver"),
+	    NULL, 0, NULL, 0, CTL_HW, CTL_CREATE, CTL_EOL) != 0)
+		return;
+
+	(void)sysctl_createv(clog, 0, &rnode, NULL,
+	    CTLFLAG_PERMANENT | CTLFLAG_READONLY, CTLTYPE_STRING, "version",
+	    SYSCTL_DESCR("WarpGFX driver version"),
+	    NULL, 0, __UNCONST(warpgfx_version), 0, CTL_CREATE, CTL_EOL);
+}
 
 static struct wsdisplay_accessops warpgfx_accessops = {
 	.ioctl = warpgfx_ioctl,
@@ -632,10 +657,15 @@ warpgfx_attach_wsdisplay(struct warpgfx_softc *sc)
 	    "80x25", 80, 25, NULL, 8, 16,
 	    WSSCREEN_WSCOLORS | WSSCREEN_HILIT, NULL
 	};
+	sc->sc_80x27screen = (struct wsscreen_descr) {
+	    "80x27", 80, 27, NULL, 8, 16,
+	    WSSCREEN_WSCOLORS | WSSCREEN_HILIT, NULL
+	};
 	sc->sc_screens[0] = &sc->sc_defaultscreen;
 	sc->sc_screens[1] = &sc->sc_80x25screen;
+	sc->sc_screens[2] = &sc->sc_80x27screen;
 	sc->sc_screenlist = (struct wsscreen_list) {
-	    2, sc->sc_screens
+	    3, sc->sc_screens
 	};
 	sc->sc_wsmode = WSDISPLAYIO_MODE_EMUL;
 
@@ -656,6 +686,8 @@ warpgfx_attach_wsdisplay(struct warpgfx_softc *sc)
 	sc->sc_defaultscreen.fontheight = ri->ri_font->fontheight;
 	sc->sc_80x25screen.textops = &ri->ri_ops;
 	sc->sc_80x25screen.capabilities = ri->ri_caps;
+	sc->sc_80x27screen.textops = &ri->ri_ops;
+	sc->sc_80x27screen.capabilities = ri->ri_caps;
 
 	if (sc->sc_isconsole) {
 		vcons_redraw_screen(&sc->sc_console_screen);
