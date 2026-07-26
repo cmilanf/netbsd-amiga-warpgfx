@@ -18,7 +18,13 @@ usage: $0 [options]
       --work-dir DIR        build workspace (default: ~/netbsd-amiga-warpgfx-build)
       --reset-sources       discard cached source edits and reapply current patches
       --only-kernel         build only the kernel using existing cross-tools
+      --no-xorg             build cross-tools and kernel only; skip the Xorg build
       --non-reproducible    embed traditional host details in the kernel version
+      --config FILE         canonical-patch-config.sh to source
+                            (default: repo scripts/canonical-patch-config.sh)
+      --src-patch FILE      src patch to apply (default: patches/canonical/netbsd-src-warpgfx.patch)
+      --xsrc-patch FILE     xsrc patch to apply (default: patches/canonical/netbsd-xsrc-warpgfx-wsfb-exa.patch)
+      --checksums FILE      SHA256 file to verify patches (default: patches/canonical/SHA256.txt)
   -o, --output DIR          artifact directory (default: repository output/)
   -h, --help                show this help
 
@@ -63,6 +69,7 @@ JOBS=
 WORK_ROOT=${HOME:-/tmp}/netbsd-amiga-warpgfx-build
 RESET_SOURCES=0
 ONLY_KERNEL=0
+SKIP_XORG=0
 REPRODUCIBLE=1
 OUTPUT=$ROOT/output
 
@@ -117,6 +124,50 @@ while [ "$#" -gt 0 ]; do
             ;;
         --only-kernel)
             ONLY_KERNEL=1
+            shift
+            ;;
+        --no-xorg)
+            SKIP_XORG=1
+            shift
+            ;;
+        --config)
+            need_arg "$@"
+            CONFIG=$2
+            shift 2
+            ;;
+        --config=*)
+            CONFIG=${1#*=}
+            [ -n "$CONFIG" ] || die "--config requires a value"
+            shift
+            ;;
+        --src-patch)
+            need_arg "$@"
+            SRC_PATCH=$2
+            shift 2
+            ;;
+        --src-patch=*)
+            SRC_PATCH=${1#*=}
+            [ -n "$SRC_PATCH" ] || die "--src-patch requires a value"
+            shift
+            ;;
+        --xsrc-patch)
+            need_arg "$@"
+            XSRC_PATCH=$2
+            shift 2
+            ;;
+        --xsrc-patch=*)
+            XSRC_PATCH=${1#*=}
+            [ -n "$XSRC_PATCH" ] || die "--xsrc-patch requires a value"
+            shift
+            ;;
+        --checksums)
+            need_arg "$@"
+            CHECKSUMS=$2
+            shift 2
+            ;;
+        --checksums=*)
+            CHECKSUMS=${1#*=}
+            [ -n "$CHECKSUMS" ] || die "--checksums requires a value"
             shift
             ;;
         --non-reproducible)
@@ -215,6 +266,14 @@ case $OUTPUT in
     /*) ;;
     *) OUTPUT=$PWD/$OUTPUT ;;
 esac
+for _ovar in CONFIG SRC_PATCH XSRC_PATCH CHECKSUMS; do
+    eval "_oval=\$$_ovar"
+    case $_oval in
+        /*) ;;
+        *) eval "$_ovar=\$PWD/\$_oval" ;;
+    esac
+done
+unset _ovar _oval
 
 need_command() {
     command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
@@ -563,8 +622,15 @@ else
     mv "$KERNEL_CONFIG_NEW" "$KERNEL_CONFIG"
 fi
 
+if [ "$ONLY_KERNEL" -eq 0 ] && [ "$SKIP_XORG" -eq 0 ]; then
+    BUILD_XORG=1
+else
+    BUILD_XORG=0
+fi
 if [ "$ONLY_KERNEL" -eq 1 ]; then
-    BUILD_SCOPE='kernel only'
+    BUILD_SCOPE='kernel only (reusing cross-tools)'
+elif [ "$SKIP_XORG" -eq 1 ]; then
+    BUILD_SCOPE='cross-tools and kernel (Xorg skipped)'
 else
     BUILD_SCOPE='kernel and Xorg driver'
 fi
@@ -614,7 +680,7 @@ rm -f "$KERNEL_COMPILE_DIR/vers.c" "$KERNEL_COMPILE_DIR/vers.o"
     fi
 )
 
-if [ "$ONLY_KERNEL" -eq 0 ]; then
+if [ "$BUILD_XORG" -eq 1 ]; then
     note "Building the NetBSD Xorg distribution and accelerated wsfb driver"
     (
         cd "$SRC_TREE"
@@ -629,7 +695,7 @@ KERNEL_ARTIFACT=$OBJ/sys/arch/amiga/compile/$KERNCONF/netbsd
 KERNEL_OUTPUT=$OUTPUT/netbsd-warpgfx
 install -m 0444 "$KERNEL_ARTIFACT" "$KERNEL_OUTPUT"
 
-if [ "$ONLY_KERNEL" -eq 0 ]; then
+if [ "$BUILD_XORG" -eq 1 ]; then
     DRIVER_ARTIFACT=$DESTDIR/usr/X11R7/lib/modules/drivers/wsfb_drv.so.0
     [ -s "$DRIVER_ARTIFACT" ] || die "Xorg driver artifact not found: $DRIVER_ARTIFACT"
     DRIVER_OUTPUT=$OUTPUT/wsfb_drv.so.0
@@ -653,7 +719,7 @@ WARPGFX_DEBUG: $WARP_DEBUG
 WARPGFX_MODE: $WARP_MODE
 Kernel SHA256: $KERNEL_SHA256  ${KERNEL_OUTPUT##*/}
 EOF
-    if [ "$ONLY_KERNEL" -eq 0 ]; then
+    if [ "$BUILD_XORG" -eq 1 ]; then
         DRIVER_SHA256=$(sha256 -q "$DRIVER_OUTPUT")
         echo "Driver SHA256: $DRIVER_SHA256  ${DRIVER_OUTPUT##*/}"
     fi
@@ -662,7 +728,7 @@ EOF
 note "Build completed"
 echo "Artifacts:"
 echo "  $KERNEL_OUTPUT"
-if [ "$ONLY_KERNEL" -eq 0 ]; then
+if [ "$BUILD_XORG" -eq 1 ]; then
     echo "  $DRIVER_OUTPUT"
 fi
 echo "  $OUTPUT/BUILD-INFO.txt"
@@ -675,12 +741,21 @@ Next steps (not performed by this script):
    AmigaOS loadbsd setup, then test it without removing the known-good kernel.
 EOF
 
-if [ "$ONLY_KERNEL" -eq 1 ]; then
-    cat <<EOF
+if [ "$BUILD_XORG" -eq 0 ]; then
+    if [ "$ONLY_KERNEL" -eq 1 ]; then
+        cat <<EOF
 
 The Xorg distribution and wsfb driver were skipped by --only-kernel. Any
 existing wsfb_drv.so.0 in the output directory was left unchanged.
 EOF
+    else
+        cat <<EOF
+
+The Xorg distribution and wsfb driver were skipped by --no-xorg. Cross-tools
+and the kernel were built. Any existing wsfb_drv.so.0 in the output directory
+was left unchanged.
+EOF
+    fi
 else
     cat <<EOF
 
