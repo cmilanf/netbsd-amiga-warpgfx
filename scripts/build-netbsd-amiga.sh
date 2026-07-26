@@ -496,7 +496,12 @@ no options	M68020
 no options	M68040
 no options	M68060
 
-# 68040-only FPU support is unnecessary.
+# The 68060 software support package requires M68060.
+no options	M060SP
+
+# FPSP is the 68040-specific FPU support package; it is unnecessary here.
+# FPU_EMULATE is inherited from GENERIC and intentionally kept: a bare 68030
+# has no on-chip FPU, so a machine lacking a 68881/68882 relies on emulation.
 no options	FPSP
 EOF
             ;;
@@ -507,6 +512,14 @@ EOF
 no options	M68020
 no options	M68030
 no options	M68060
+
+# The 68060 software support package requires M68060.
+no options	M060SP
+
+# Keep FPSP (inherited from GENERIC): the 68040 FPU implements only part of
+# the instruction set in hardware and traps the rest, which FPSP emulates.
+# The 68040 has an on-chip FPU, so full software FPU emulation is unnecessary.
+no options	FPU_EMULATE
 EOF
             ;;
         68060)
