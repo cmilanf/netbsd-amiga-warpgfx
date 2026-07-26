@@ -1,9 +1,10 @@
 #!/bin/sh
-# Regenerate release patches from vendored files at the configured bases.
+# Create canonical patches from vendored files at the configured upstream bases.
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-CONFIG=$ROOT/scripts/patch-config.sh
+CONFIG=$ROOT/scripts/canonical-patch-config.sh
+PATCH_ROOT=$ROOT/patches/canonical
 [ -f "$CONFIG" ] || { echo "missing $CONFIG" >&2; exit 1; }
 . "$CONFIG"
 
@@ -90,13 +91,8 @@ sha256_file() {
 
 write_checksums() {
     output=$1
-    for file in netbsd-src-warpgfx.patch netbsd-xsrc-warpgfx-wsfb-exa.patch \
-        scripts/build-netbsd-amiga.sh README.md ATTRIBUTIONS.md; do
-        case $file in
-            netbsd-*.patch) input=$TMP_ROOT/$file ;;
-            *) input=$ROOT/$file ;;
-        esac
-        printf '%s  %s\n' "$(sha256_file "$input")" "$file"
+    for file in netbsd-src-warpgfx.patch netbsd-xsrc-warpgfx-wsfb-exa.patch; do
+        printf '%s  %s\n' "$(sha256_file "$TMP_ROOT/$file")" "$file"
     done > "$output"
 }
 
@@ -106,11 +102,12 @@ generate_patch src src "$SRC_PATHS" "$TMP_ROOT/netbsd-src-warpgfx.patch"
 generate_patch xsrc xsrc "$XSRC_PATHS" "$TMP_ROOT/netbsd-xsrc-warpgfx-wsfb-exa.patch"
 write_checksums "$TMP_ROOT/SHA256.txt"
 
-mv "$TMP_ROOT/netbsd-src-warpgfx.patch" "$ROOT/netbsd-src-warpgfx.patch"
-mv "$TMP_ROOT/netbsd-xsrc-warpgfx-wsfb-exa.patch" "$ROOT/netbsd-xsrc-warpgfx-wsfb-exa.patch"
-mv "$TMP_ROOT/SHA256.txt" "$ROOT/SHA256.txt"
+mkdir -p "$PATCH_ROOT"
+mv "$TMP_ROOT/netbsd-src-warpgfx.patch" "$PATCH_ROOT/netbsd-src-warpgfx.patch"
+mv "$TMP_ROOT/netbsd-xsrc-warpgfx-wsfb-exa.patch" "$PATCH_ROOT/netbsd-xsrc-warpgfx-wsfb-exa.patch"
+mv "$TMP_ROOT/SHA256.txt" "$PATCH_ROOT/SHA256.txt"
 
 echo "Generated and verified:"
-echo "  $ROOT/netbsd-src-warpgfx.patch"
-echo "  $ROOT/netbsd-xsrc-warpgfx-wsfb-exa.patch"
-echo "  $ROOT/SHA256.txt"
+echo "  $PATCH_ROOT/netbsd-src-warpgfx.patch"
+echo "  $PATCH_ROOT/netbsd-xsrc-warpgfx-wsfb-exa.patch"
+echo "  $PATCH_ROOT/SHA256.txt"

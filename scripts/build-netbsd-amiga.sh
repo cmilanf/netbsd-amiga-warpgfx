@@ -3,10 +3,10 @@
 set -eu
 
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
-CONFIG=$ROOT/scripts/patch-config.sh
-SRC_PATCH=$ROOT/netbsd-src-warpgfx.patch
-XSRC_PATCH=$ROOT/netbsd-xsrc-warpgfx-wsfb-exa.patch
-CHECKSUMS=$ROOT/SHA256.txt
+CONFIG=$ROOT/scripts/canonical-patch-config.sh
+SRC_PATCH=$ROOT/patches/canonical/netbsd-src-warpgfx.patch
+XSRC_PATCH=$ROOT/patches/canonical/netbsd-xsrc-warpgfx-wsfb-exa.patch
+CHECKSUMS=$ROOT/patches/canonical/SHA256.txt
 
 usage() {
     cat <<EOF
@@ -267,7 +267,7 @@ verify_checksum "$SRC_PATCH"
 verify_checksum "$XSRC_PATCH"
 
 # This trusted, checked-in file is the single source of upstream revisions.
-# shellcheck source=patch-config.sh
+# shellcheck source=canonical-patch-config.sh
 # shellcheck disable=SC1091
 . "$CONFIG"
 case $SRC_BASE in ''|*[!0-9a-f]*) die "invalid SRC_BASE in $CONFIG" ;; esac

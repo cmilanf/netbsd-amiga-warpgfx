@@ -3,7 +3,9 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-CONFIG=$ROOT/scripts/patch-config.sh
+CONFIG=$ROOT/scripts/canonical-patch-config.sh
+CANONICAL_REL=patches/canonical
+CANONICAL=$ROOT/$CANONICAL_REL
 [ -f "$CONFIG" ] || { echo "missing $CONFIG" >&2; exit 1; }
 . "$CONFIG"
 
@@ -50,7 +52,7 @@ CANDIDATE=$TMP_ROOT/candidate
 BACKUP=$TMP_ROOT/backup
 PRESERVE=$KEEP_TEMP
 INSTALLING=0
-mkdir -p "$CANDIDATE" "$BACKUP"
+mkdir -p "$CANDIDATE/$CANONICAL_REL" "$BACKUP"
 
 restore_backup() {
     [ -f "$BACKUP/files" ] || return 0
@@ -80,8 +82,7 @@ trap cleanup 0 1 2 15
 
 if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     dirty=$(git -C "$ROOT" status --porcelain -- \
-        scripts/patch-config.sh src xsrc netbsd-src-warpgfx.patch \
-        netbsd-xsrc-warpgfx-wsfb-exa.patch SHA256.txt)
+        scripts/canonical-patch-config.sh src xsrc patches/canonical)
     [ -z "$dirty" ] || {
         echo "managed files have uncommitted changes; commit or revert them first:" >&2
         echo "$dirty" >&2
@@ -192,8 +193,8 @@ prepare_rebased_tree() {
     fi
 
     git -C "$update_repo" checkout -q --detach "$update_old"
-    git -C "$update_repo" apply --check --whitespace=nowarn "$ROOT/$update_patch"
-    git -C "$update_repo" apply --index --whitespace=nowarn "$ROOT/$update_patch"
+    git -C "$update_repo" apply --check --whitespace=nowarn "$CANONICAL/$update_patch"
+    git -C "$update_repo" apply --index --whitespace=nowarn "$CANONICAL/$update_patch"
     git -C "$update_repo" diff --cached --check
     verify_vendor_matches "$update_repo" "$update_vendor" "$update_paths"
     git -C "$update_repo" commit -qm 'WarpGFX local patch'
@@ -214,17 +215,17 @@ prepare_rebased_tree() {
 
     set -- $update_paths
     git -C "$update_repo" diff --no-ext-diff --full-index --binary \
-        "$update_new" "$rebased_commit" -- "$@" > "$CANDIDATE/$update_patch"
-    [ -s "$CANDIDATE/$update_patch" ] || {
+        "$update_new" "$rebased_commit" -- "$@" > "$CANDIDATE/$CANONICAL_REL/$update_patch"
+    [ -s "$CANDIDATE/$CANONICAL_REL/$update_patch" ] || {
         echo "$update_name: generated patch is empty" >&2
         return 1
     }
     expected_tree=$(git -C "$update_repo" rev-parse "$rebased_commit^{tree}")
     git -C "$update_repo" apply --check --reverse --whitespace=nowarn \
-        "$CANDIDATE/$update_patch"
+        "$CANDIDATE/$CANONICAL_REL/$update_patch"
     git -C "$update_repo" checkout -q --detach "$update_new"
-    git -C "$update_repo" apply --check --whitespace=nowarn "$CANDIDATE/$update_patch"
-    git -C "$update_repo" apply --index --whitespace=nowarn "$CANDIDATE/$update_patch"
+    git -C "$update_repo" apply --check --whitespace=nowarn "$CANDIDATE/$CANONICAL_REL/$update_patch"
+    git -C "$update_repo" apply --index --whitespace=nowarn "$CANDIDATE/$CANONICAL_REL/$update_patch"
     actual_tree=$(git -C "$update_repo" write-tree)
     [ "$actual_tree" = "$expected_tree" ] || {
         echo "$update_name: patch verification produced a different tree" >&2
@@ -255,12 +256,8 @@ sha256_file() {
 
 write_checksums() {
     checksum_output=$1
-    for checksum_name in netbsd-src-warpgfx.patch netbsd-xsrc-warpgfx-wsfb-exa.patch \
-        scripts/build-netbsd-amiga.sh README.md ATTRIBUTIONS.md; do
-        case $checksum_name in
-            netbsd-*.patch) checksum_input=$CANDIDATE/$checksum_name ;;
-            *) checksum_input=$ROOT/$checksum_name ;;
-        esac
+    for checksum_name in netbsd-src-warpgfx.patch netbsd-xsrc-warpgfx-wsfb-exa.patch; do
+        checksum_input=$CANDIDATE/$CANONICAL_REL/$checksum_name
         printf '%s  %s\n' "$(sha256_file "$checksum_input")" "$checksum_name"
     done > "$checksum_output"
 }
@@ -274,15 +271,16 @@ NEW_XSRC_BASE=$(cat "$TMP_ROOT/xsrc.new")
 
 sed -e "s/^SRC_BASE=.*/SRC_BASE='$NEW_SRC_BASE'/" \
     -e "s/^XSRC_BASE=.*/XSRC_BASE='$NEW_XSRC_BASE'/" \
-    "$CONFIG" > "$CANDIDATE/scripts.patch-config.sh"
+    "$CONFIG" > "$CANDIDATE/scripts.canonical-patch-config.sh"
 mkdir -p "$CANDIDATE/scripts"
-mv "$CANDIDATE/scripts.patch-config.sh" "$CANDIDATE/scripts/patch-config.sh"
-write_checksums "$CANDIDATE/SHA256.txt"
+mv "$CANDIDATE/scripts.canonical-patch-config.sh" \
+    "$CANDIDATE/scripts/canonical-patch-config.sh"
+write_checksums "$CANDIDATE/$CANONICAL_REL/SHA256.txt"
 
-INSTALL_PATHS='scripts/patch-config.sh
-netbsd-src-warpgfx.patch
-netbsd-xsrc-warpgfx-wsfb-exa.patch
-SHA256.txt'
+INSTALL_PATHS="scripts/canonical-patch-config.sh
+$CANONICAL_REL/netbsd-src-warpgfx.patch
+$CANONICAL_REL/netbsd-xsrc-warpgfx-wsfb-exa.patch
+$CANONICAL_REL/SHA256.txt"
 for install_path in $SRC_PATHS; do
     INSTALL_PATHS="$INSTALL_PATHS
 src/$install_path"
