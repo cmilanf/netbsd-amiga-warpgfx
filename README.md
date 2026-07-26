@@ -70,6 +70,31 @@ Features:
       <sub><strong>Kernel detection</strong> of the WarpGFX devices. Select the image to view full size.</sub>
     </td>
   </tr>
+  <tr>
+    <td width="50%" align="center">
+      <a href="screenshots/warpgfx-font-terminus.png">
+        <img src="screenshots/warpgfx-font-terminus.png" width="100%" alt="WarpGFX console using the Terminus-derived WarpConsole font">
+      </a>
+      <br>
+      <sub><strong>WarpConsole font</strong> derived from Terminus Font. Select the image to view full size.</sub>
+    </td>
+    <td width="50%" align="center">
+      <a href="screenshots/warpgfx-font-ibm.png">
+        <img src="screenshots/warpgfx-font-ibm.png" width="100%" alt="WarpGFX console using the IBM VGA-style WarpConsole font">
+      </a>
+      <br>
+      <sub><strong>WarpConsole VGA font</strong> with classic IBM CP437 glyphs. Select the image to view full size.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <a href="screenshots/warpgfx-font-ibm-ansi.png">
+        <img src="screenshots/warpgfx-font-ibm-ansi.png" alt="IBM ANSI artwork displayed with the WarpConsole VGA CP437 font">
+      </a>
+      <br>
+      <sub><strong>IBM ANSI artwork</strong> rendered with the WarpConsole VGA CP437 font. Select the image to view full size.</sub>
+    </td>
+  </tr>
 </table>
 
 ## Performance testing
