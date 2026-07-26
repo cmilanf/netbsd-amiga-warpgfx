@@ -15,6 +15,18 @@ The audit was performed per source file because the NetBSD tree does not use one
 | `external/mit/xf86-video-wsfb/dist/src/wsfb_exa.c` | New EXA implementation attributed to Carlos under two-clause BSD. It uses public Xorg EXA and NetBSD wsdisplay interfaces; no third-party device-specific acceleration implementation was incorporated. |
 | Existing `wsfb.h`, `wsfb_driver.c`, and `wsfb.man` | Copyright (c) 2001/2001-2012 Matthieu Herrb and the existing two-clause BSD license remain. The existing statement that wsfb is based on `fbdev.c`, with authors Alan Hourihane and Michel Dänzer, remains. Carlos and GPT-5.6-Sol are identified for the wsdisplay EXA extensions in the affected source files. |
 
+## Optional wscons font extras
+
+The optional `extras/wscons-fonts/` bundle is outside the NetBSD `src`/`xsrc`
+overlay and does not alter the licensing of the WarpGFX driver or patches.
+Licensing is scoped as follows:
+
+| File or area | Preserved attribution and terms |
+| --- | --- |
+| `sources/ter-132n.wsf`, `artifacts/WarpConsole-24x40.wsf` | Terminus Font 4.49.1, Copyright (C) 2020 Dimitar Toshkov Zhekov, under SIL Open Font License 1.1 with Reserved Font Name "Terminus Font". The derivative uses the non-reserved WarpConsole name. Exact source hash and modifications are recorded in `licenses/TERMINUS-FONT-NOTICE.md`. |
+| `sources/PCFace-Oldschool-VGA-8x16-fontlist.js`, `artifacts/WarpConsole-VGA-CP437-Raw-24x40.wsf` | PC Face Oldschool VGA bitmap generated from Oldschool PC Fonts 2.2 by VileR. Distributed here under CC BY-SA 4.0 with pinned PC Face commit, source hash, modification record, and no-endorsement notice in `licenses/OLDSCHOOL-VGA-FONT-NOTICE.md`. |
+| Font generators, validator, installer, example configuration, and bundle documentation | New work by Carlos Milán Figueredo with assistance from OpenAI GPT-5.6-Sol, under the repository's BSD 2-Clause license. |
+
 ## Notes
 
 - The mention of GPT-5.6-Sol records authoring assistance. It does not name the model as a copyright holder or replace the human author's attribution.

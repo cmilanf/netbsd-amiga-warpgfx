@@ -1,0 +1,4 @@
+b160154cb0ddafe191a5fa51a6d092630c80444d010b8282e36b9278c23afe8c  sources/ter-132n.wsf
+f8c59bfc39e52dae72d04406654230d5d4d1a343554bdddfbe11a137d0154cc7  sources/PCFace-Oldschool-VGA-8x16-fontlist.js
+6743dd2ea651dadd251de71c772f9c3bea17cfa576574cec5d6ce6b687a11911  artifacts/WarpConsole-24x40.wsf
+f5b1ff75d7b8ac75461ad0597f512b597aa2c550790275d628b2f08ab5d12cd3  artifacts/WarpConsole-VGA-CP437-Raw-24x40.wsf

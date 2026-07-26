@@ -1,0 +1,28 @@
+# Optional WarpGFX 1920x1080 wscons font policy.
+#
+# Merge selected lines into /etc/wscons.conf manually; do not replace the whole
+# system file. Keep ttyE0 unchanged as the boot/recovery console. This example
+# creates ttyE1-ttyE3 as exact-fit ISO consoles and ttyE4 as a raw CP437
+# ANSI/BBS console. It does not create ttyE5 or modify /etc/ttys.
+# If install.sh used a non-default --prefix, replace /usr/local below with it.
+#
+# Columns: name width height encoding file
+font	WarpConsole-24x40-ISO8859-1	-	-	-	/usr/local/share/wscons/fonts/WarpConsole-24x40.wsf
+
+# Columns: index screen-type emulation
+# 80 * 24 = 1920; 27 * 40 = 1080.
+screen	1	80x27	vt100
+screen	2	80x27	vt100
+screen	3	80x27	vt100
+screen	4	80x25	vt100
+
+# Load the raw-CP437 font after creating the screens, then assign fonts
+# explicitly. Its WSF encoding is intentionally ISO/direct so wsemul_vt100
+# sends high-bit BBS bytes to the same-numbered CP437 glyph slots.
+font	WarpConsole-VGA-CP437-Raw-24x40	-	-	-	/usr/local/share/wscons/fonts/WarpConsole-VGA-CP437-Raw-24x40.wsf
+setvar	ttyE1	font	WarpConsole-24x40-ISO8859-1
+setvar	ttyE2	font	WarpConsole-24x40-ISO8859-1
+setvar	ttyE3	font	WarpConsole-24x40-ISO8859-1
+setvar	ttyE4	font	WarpConsole-VGA-CP437-Raw-24x40
+
+# Deliberately no ttyE0 font assignment and no screen/setvar entry for ttyE5.

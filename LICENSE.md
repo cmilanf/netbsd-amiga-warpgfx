@@ -1,5 +1,11 @@
 # BSD 2-Clause License
 
+This license applies to newly authored WarpGFX project code except where a file
+or directory states otherwise. Optional font sources and derivatives under
+`extras/wscons-fonts/` retain their separately identified SIL Open Font License
+1.1 or Creative Commons Attribution-ShareAlike 4.0 terms; see that directory's
+README and `licenses/` notices.
+
 Copyright (c) 2026, Carlos Milán Figueredo
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
