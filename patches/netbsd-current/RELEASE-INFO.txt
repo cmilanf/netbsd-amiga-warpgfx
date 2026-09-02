@@ -1,7 +1,7 @@
 WarpGFX release patch set
 label:       netbsd-current
-src commit:  bd9f26305380f03b3821f55381448a82827d6749
-xsrc commit: e32b53118bd84cc2f5b7986ea65525f9f1213ca7
+src commit:  f66621237dc60126bd8a972b6064639892b344b7
+xsrc commit: f18202c408fbf3cbd9cd4f9bea7281a789187e66
 src url:     https://github.com/NetBSD/src.git
 xsrc url:    https://github.com/NetBSD/xsrc.git
 rebased from canonical base:

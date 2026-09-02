@@ -130,7 +130,7 @@ Prebuilt kernel/module bundles are published on the [GitHub releases page](https
 
 | Release tag | NetBSD base | Marked |
 | ----------- | ----------- | ------ |
-| `warpgfx-11.0_RC6` | NetBSD 11.0_RC6 | Latest (full release) |
+| `warpgfx-11.0` | NetBSD 11.0 (netbsd-11 branch, 11.0_STABLE) | Latest (full release) |
 | `warpgfx-current` | NetBSD-current (11.99.x) | Prerelease |
 
 Each release contains, for every CPU and 16-bit resolution, both a `.tar.gz` and a `.lha` archive:
@@ -139,7 +139,7 @@ Each release contains, for every CPU and 16-bit resolution, both a `.tar.gz` and
 netbsd-amiga-<version>-warpgfx-<warpgfx-version>-<cpu>-<resolution>.{tar.gz,lha}
 ```
 
-- `<version>` is the NetBSD version: `11.0_RC6` or `current`.
+- `<version>` is the NetBSD version: `11.0` or `current`.
 - `<warpgfx-version>` is the WarpGFX driver version, e.g. `1.0`.
 - `<cpu>` is `68030`, `68040`, or `68060`.
 - `<resolution>` is the console/X resolution: `1280x720` or `1920x1080`.
@@ -165,20 +165,20 @@ Installation is performed on the Amiga. Always keep a known-good fallback before
 1. Download the archive matching your CPU and resolution from the [release](#releases), and verify it against the release's `SHA256SUMS-<version>.txt`:
 
    ```sh
-   sha256 -q netbsd-amiga-11.0_RC6-warpgfx-1.0-68060-1920x1080.tar.gz
+   sha256 -q netbsd-amiga-11.0-warpgfx-1.0-68060-1920x1080.tar.gz
    ```
 
 2. Extract it. Both formats yield the same layout:
 
    ```sh
-   tar xzf netbsd-amiga-11.0_RC6-warpgfx-1.0-68060-1920x1080.tar.gz
-   # or, on AmigaOS/with lha: lha x netbsd-amiga-11.0_RC6-warpgfx-1.0-68060-1920x1080.lha
+   tar xzf netbsd-amiga-11.0-warpgfx-1.0-68060-1920x1080.tar.gz
+   # or, on AmigaOS/with lha: lha x netbsd-amiga-11.0-warpgfx-1.0-68060-1920x1080.lha
    ```
 
    This produces:
 
    ```text
-   netbsd-amiga-11.0_RC6-warpgfx-1.0-68060-1920x1080/
+   netbsd-amiga-11.0-warpgfx-1.0-68060-1920x1080/
    ├── netbsd-warpgfx
    ├── wsfb_drv.so.0
    └── BUILD-INFO.txt
@@ -200,7 +200,7 @@ The accelerated Xorg support is the standard `wsfb` driver rebuilt with the Warp
 Stop X, change to the extracted archive directory, back up the installed module, and install the archive's module as root:
 
 ```sh
-cd netbsd-amiga-11.0_RC6-warpgfx-1.0-68060-1920x1080
+cd netbsd-amiga-11.0-warpgfx-1.0-68060-1920x1080
 cp /usr/X11R7/lib/modules/drivers/wsfb_drv.so.0 \
    /usr/X11R7/lib/modules/drivers/wsfb_drv.so.0.backup
 install -m 0555 ./wsfb_drv.so.0 \
@@ -338,7 +338,7 @@ NetBSD sources include a powerful toolchain supporting cross-building. You can u
 The canonical patches target a single upstream base. To ship the driver against several NetBSD releases at once, `scripts/create-release-patches.conf` lists each target as `LABEL|SRC_COMMIT|XSRC_COMMIT`:
 
 ```text
-netbsd-11.0_RC6|<src commit>|<xsrc commit>
+netbsd-11.0|<src commit>|<xsrc commit>
 netbsd-current|<src commit>|<xsrc commit>
 ```
 
@@ -390,7 +390,7 @@ Restrict any axis to build only what you need:
 netbsd-amiga-<version>-warpgfx-<warpgfx-version>-<cpu>-<resolution>.{tar.gz,lha}
 ```
 
-`<version>` is the release label without its `netbsd-` prefix (`11.0_RC6`, `current`), `<warpgfx-version>` is the driver version (from `WARPGFX_VERSION` in the driver header, or `--driver-version`), and `<resolution>` is the pixel geometry mapped from the `WARPGFX_MODE` token (`720`→`1280x720`, `1080`→`1920x1080`, and so on). Each archive holds a single top-level directory with the kernel (named `netbsd-warpgfx` by default; change with `--kernel-name`), `wsfb_drv.so.0` installed with mode `0555`, and `BUILD-INFO.txt` containing both artifact hashes. A `SHA256SUMS-<version>.txt` accompanies each version's archives. Building archives requires `tar`, `gzip`, and an `lha` implementation; publishing additionally requires an authenticated `gh`.
+`<version>` is the release label without its `netbsd-` prefix (`11.0`, `current`), `<warpgfx-version>` is the driver version (from `WARPGFX_VERSION` in the driver header, or `--driver-version`), and `<resolution>` is the pixel geometry mapped from the `WARPGFX_MODE` token (`720`→`1280x720`, `1080`→`1920x1080`, and so on). Each archive holds a single top-level directory with the kernel (named `netbsd-warpgfx` by default; change with `--kernel-name`), `wsfb_drv.so.0` installed with mode `0555`, and `BUILD-INFO.txt` containing both artifact hashes. A `SHA256SUMS-<version>.txt` accompanies each version's archives. Building archives requires `tar`, `gzip`, and an `lha` implementation; publishing additionally requires an authenticated `gh`.
 
 Building archives is always local and safe. Uploading happens only with `--publish`; without it the script builds every archive and prints the exact `gh` commands it would run:
 

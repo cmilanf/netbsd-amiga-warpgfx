@@ -1,9 +1,9 @@
 #!/bin/sh
 # Shared upstream pins and managed paths. This file is sourced by other scripts.
 SRC_URL='https://github.com/NetBSD/src.git'
-SRC_BASE='5f3f31427306f722c40a286d23b324c2b4bddf6f'
+SRC_BASE='33e354d16e88e297574c1a48a70a0111a25f0232'
 XSRC_URL='https://github.com/NetBSD/xsrc.git'
-XSRC_BASE='6ae477271c420cdacae3c18ea6fcf41cc6b9c67d'
+XSRC_BASE='980d69e3df4433b768bffdc4c42ad3c1053692e6'
 
 SRC_PATHS='external/mit/xorg/server/drivers/xf86-video-wsfb/Makefile
 sys/arch/amiga/amiga/conf.c

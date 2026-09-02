@@ -7,7 +7,7 @@
 #   netbsd-amiga-<version>-warpgfx-<warpgfx-version>-<cpu>-<resolution>.lha
 #
 # where <version> is the release label with its leading "netbsd-" stripped
-# (e.g. 11.0_RC6, current), <cpu> is 68030|68040|68060, and <resolution> is the
+# (e.g. 11.0, current), <cpu> is 68030|68040|68060, and <resolution> is the
 # pixel geometry mapped from the WARPGFX_MODE token (720 -> 1280x720, etc.).
 #
 # Building archives is always safe and local. Uploading to GitHub happens only
