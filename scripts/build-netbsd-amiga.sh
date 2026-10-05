@@ -19,6 +19,7 @@ usage: $0 [options]
       --reset-sources       discard cached source edits and reapply current patches
       --only-kernel         build only the kernel using existing cross-tools
       --no-xorg             build cross-tools and kernel only; skip the Xorg build
+      --no-diag             do not cross-compile the diag/ diagnostic tools
       --non-reproducible    embed traditional host details in the kernel version
       --config FILE         canonical-patch-config.sh to source
                             (default: repo scripts/canonical-patch-config.sh)
@@ -30,9 +31,15 @@ usage: $0 [options]
 
 WarpGFX options default to: console,accel,mode=720,no-debug
 Supported tokens: console, no-console, accel, no-accel, debug, no-debug,
-and mode=480|600|720|768|1024|1080. Example:
+insecure, no-insecure, and mode=480|600|720|768|1024|1080. "insecure" adds
+options INSECURE (securelevel -1) so the diag/ tools can write registers;
+use such a kernel only for testing. Example:
 
   $0 --cpu 68060 --warpgfx console,accel,mode=1080,no-debug -j 2
+
+The diag/ tools are cross-compiled into <output>/diag/ whenever the workspace
+destination tree holds the NetBSD/amiga headers and libraries, which a full
+build creates and later --only-kernel builds reuse.
 
 The work directory is created on the first run and safely reused on later runs.
 Pinned source revisions and patch state are validated before cached objects are
@@ -70,6 +77,7 @@ WORK_ROOT=${HOME:-/tmp}/netbsd-amiga-warpgfx-build
 RESET_SOURCES=0
 ONLY_KERNEL=0
 SKIP_XORG=0
+BUILD_DIAG=1
 REPRODUCIBLE=1
 OUTPUT=$ROOT/output
 
@@ -128,6 +136,10 @@ while [ "$#" -gt 0 ]; do
             ;;
         --no-xorg)
             SKIP_XORG=1
+            shift
+            ;;
+        --no-diag)
+            BUILD_DIAG=0
             shift
             ;;
         --config)
@@ -225,6 +237,7 @@ esac
 WARP_CONSOLE=1
 WARP_ACCEL=1
 WARP_DEBUG=0
+WARP_INSECURE=0
 WARP_MODE=720
 if [ "$WARP_SPEC_SET" -eq 1 ]; then
     [ -n "$WARP_SPEC" ] || die "--warpgfx requires at least one option"
@@ -240,6 +253,8 @@ if [ "$WARP_SPEC_SET" -eq 1 ]; then
             no-accel) WARP_ACCEL=0 ;;
             debug) WARP_DEBUG=1 ;;
             no-debug) WARP_DEBUG=0 ;;
+            insecure) WARP_INSECURE=1 ;;
+            no-insecure) WARP_INSECURE=0 ;;
             mode=480|mode=600|mode=720|mode=768|mode=1024|mode=1080)
                 WARP_MODE=${option#mode=}
                 ;;
@@ -614,6 +629,10 @@ EOF
     if [ "$WARP_DEBUG" -eq 1 ]; then
         printf 'options\t\tWARPGFX_DEBUG\n'
     fi
+    if [ "$WARP_INSECURE" -eq 1 ]; then
+        printf '\n# Test kernel: securelevel -1 so root can write /dev/mem.\n'
+        printf 'options\t\tINSECURE\n'
+    fi
 } > "$KERNEL_CONFIG_NEW"
 if [ -f "$KERNEL_CONFIG" ] && \
     [ "$(sha256 -q "$KERNEL_CONFIG")" = "$(sha256 -q "$KERNEL_CONFIG_NEW")" ]; then
@@ -649,6 +668,7 @@ Build settings:
   Warp console: $WARP_CONSOLE
   acceleration: $WARP_ACCEL
   debug:        $WARP_DEBUG
+  insecure:     $WARP_INSECURE
   video mode:   $WARP_MODE
   jobs:         $JOBS
   workspace:    $WORK_ROOT
@@ -702,6 +722,40 @@ if [ "$BUILD_XORG" -eq 1 ]; then
     install -m 0555 "$DRIVER_ARTIFACT" "$DRIVER_OUTPUT"
 fi
 
+DIAG_SRC=$ROOT/diag
+DIAG_OUTPUT=$OUTPUT/diag
+DIAG_CC=$TOOLS/bin/m68k--netbsdelf-gcc
+DIAG_BUILT=0
+DIAG_PROGS=
+if [ "$BUILD_DIAG" -eq 1 ]; then
+    [ -f "$DIAG_SRC/Makefile" ] || die "missing $DIAG_SRC/Makefile"
+    DIAG_PROGS=$(sed -n 's/^PROGS=[[:space:]]*//p' "$DIAG_SRC/Makefile")
+    [ -n "$DIAG_PROGS" ] || die "no PROGS list in $DIAG_SRC/Makefile"
+    if [ -x "$DIAG_CC" ] && [ -f "$DESTDIR/usr/include/stdio.h" ] && \
+       [ -f "$DESTDIR/usr/include/dev/wscons/wsconsio.h" ] && \
+       { [ -f "$DESTDIR/usr/lib/libc.so" ] || [ -f "$DESTDIR/usr/lib/libc.a" ]; }; then
+        note "Cross-compiling the WarpGFX diagnostic tools"
+        mkdir -p "$DIAG_OUTPUT"
+        for prog in $DIAG_PROGS; do
+            "$DIAG_CC" --sysroot="$DESTDIR" -O2 -Wall -Wextra -Werror \
+                -o "$DIAG_OUTPUT/$prog.tmp" "$DIAG_SRC/$prog.c" || \
+                die "failed to build diagnostic tool $prog"
+            install -m 0555 "$DIAG_OUTPUT/$prog.tmp" "$DIAG_OUTPUT/$prog"
+            rm -f "$DIAG_OUTPUT/$prog.tmp"
+        done
+        for script in "$DIAG_SRC"/warptest-*.sh; do
+            case ${script##*/} in
+                warptest-common.sh) install -m 0444 "$script" "$DIAG_OUTPUT/" ;;
+                *) install -m 0555 "$script" "$DIAG_OUTPUT/" ;;
+            esac
+        done
+        install -m 0444 "$DIAG_SRC/README.md" "$DIAG_OUTPUT/README.md"
+        DIAG_BUILT=1
+    else
+        note "Skipping the diagnostic tools: $DESTDIR has no NetBSD/amiga headers and libraries yet (run a full build)"
+    fi
+fi
+
 BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 KERNEL_SHA256=$(sha256 -q "$KERNEL_OUTPUT")
 {
@@ -717,8 +771,14 @@ WARPGFX_CONSOLE: $WARP_CONSOLE
 WARPGFX_ACCEL: $WARP_ACCEL
 WARPGFX_DEBUG: $WARP_DEBUG
 WARPGFX_MODE: $WARP_MODE
+INSECURE: $WARP_INSECURE
 Kernel SHA256: $KERNEL_SHA256  ${KERNEL_OUTPUT##*/}
 EOF
+    if [ "$DIAG_BUILT" -eq 1 ]; then
+        for prog in $DIAG_PROGS; do
+            echo "Diag SHA256: $(sha256 -q "$DIAG_OUTPUT/$prog")  diag/$prog"
+        done
+    fi
     if [ "$BUILD_XORG" -eq 1 ]; then
         DRIVER_SHA256=$(sha256 -q "$DRIVER_OUTPUT")
         echo "Driver SHA256: $DRIVER_SHA256  ${DRIVER_OUTPUT##*/}"
@@ -730,6 +790,9 @@ echo "Artifacts:"
 echo "  $KERNEL_OUTPUT"
 if [ "$BUILD_XORG" -eq 1 ]; then
     echo "  $DRIVER_OUTPUT"
+fi
+if [ "$DIAG_BUILT" -eq 1 ]; then
+    echo "  $DIAG_OUTPUT/ (diagnostic tools, see README.md there)"
 fi
 echo "  $OUTPUT/BUILD-INFO.txt"
 cat <<EOF
