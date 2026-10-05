@@ -20,7 +20,7 @@ INPUT=$ROOT/output
 DIST=
 FORMATS='tar.gz lha'
 RELEASES=
-TAG_PREFIX='warpgfx-'
+TAG_PREFIX=
 REPO=
 KERNEL_NAME='netbsd-warpgfx'
 PUBLISH=0
@@ -39,7 +39,8 @@ usage: $0 [options]
       --dist DIR        where to write archives (default: <input>/dist)
       --releases "L .." labels to package (default: all present under --input)
       --formats "..."   subset of "tar.gz lha" (default: both)
-      --tag-prefix STR  GitHub tag prefix (default: warpgfx-)
+      --tag-prefix STR  GitHub tag prefix; the tag is <prefix><version>
+                        (default: tag warpgfx-<driver-version>-netbsd-<version>)
       --repo OWNER/NAME gh repository (default: auto-detected by gh)
       --kernel-name N   filename of the kernel inside each archive
                         (default: netbsd-warpgfx)
@@ -51,9 +52,11 @@ usage: $0 [options]
       --publish         actually create/upload GitHub releases (default: dry run)
   -h, --help            show this help
 
-Each NetBSD version becomes one GitHub release tagged <tag-prefix><version>
-containing that version's archives plus a SHA256SUMS file. Re-running --publish
-updates existing releases and clobbers changed assets.
+Each WarpGFX driver version and NetBSD version pair becomes one GitHub release,
+tagged and titled warpgfx-<driver-version>-netbsd-<version>, containing that
+version's archives plus a SHA256SUMS file. Re-running --publish updates that
+release and clobbers changed assets; a new driver version creates new releases
+and leaves the older ones untouched.
 EOF
 }
 
@@ -248,12 +251,15 @@ for label in $RELEASES; do
     done
     ASSETS="$ASSETS $sums"
 
-    tag=${TAG_PREFIX}${version}
-    if [ -n "$DRIVER_VERSION" ]; then
-        title="WarpGFX $DRIVER_VERSION for NetBSD/amiga $version"
+    if [ -n "$TAG_PREFIX" ]; then
+        tag=${TAG_PREFIX}${version}
+    elif [ -n "$DRIVER_VERSION" ]; then
+        tag=warpgfx-${DRIVER_VERSION}-netbsd-${version}
     else
-        title="WarpGFX for NetBSD/amiga $version"
+        tag=warpgfx-${version}
     fi
+    # The title repeats the tag, e.g. warpgfx-1.1-netbsd-11.0.
+    title=$tag
     notes=$STAGE/notes-${version}.md
     {
         echo "WarpGFX accelerated wsdisplay kernel and Xorg wsfb module for NetBSD/amiga $version."

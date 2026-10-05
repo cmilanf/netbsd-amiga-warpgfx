@@ -168,12 +168,16 @@ Meanwhile:
 
 ## Releases
 
-Prebuilt kernel/module bundles are published on the [GitHub releases page](https://github.com/cmilanf/netbsd-amiga-warpgfx/releases). There is one release per target NetBSD version:
+Prebuilt kernel/module bundles are published on the [GitHub releases page](https://github.com/cmilanf/netbsd-amiga-warpgfx/releases). There is one release per WarpGFX version and target NetBSD version, tagged and titled `warpgfx-<warpgfx-version>-netbsd-<version>`:
 
-| Release tag | NetBSD base | Marked |
-| ----------- | ----------- | ------ |
-| `warpgfx-11.0` | NetBSD 11.0 (netbsd-11 branch, 11.0_STABLE) | Latest (full release) |
-| `warpgfx-current` | NetBSD-current (11.99.x) | Prerelease |
+| Release tag | WarpGFX | NetBSD base | Marked |
+| ----------- | ------- | ----------- | ------ |
+| `warpgfx-1.1-netbsd-11.0` | 1.1 (Warp firmware 2296) | NetBSD 11.0 (netbsd-11 branch, 11.0_STABLE) | Latest (full release) |
+| `warpgfx-1.1-netbsd-current` | 1.1 (Warp firmware 2296) | NetBSD-current (11.99.x) | Prerelease |
+| `warpgfx-11.0` | 1.0 (Warp firmware 1768) | NetBSD 11.0 (netbsd-11 branch, 11.0_STABLE) | Full release |
+| `warpgfx-current` | 1.0 (Warp firmware 1768) | NetBSD-current (11.99.x) | Prerelease |
+
+The WarpGFX 1.0 releases predate this naming and keep their original tags. See the [version map](#warp-firmware-compatibility) to choose between 1.0 and 1.1.
 
 Each release contains, for every CPU and 16-bit resolution, both a `.tar.gz` and a `.lha` archive:
 
@@ -194,7 +198,7 @@ The WarpGFX driver version is not printed at boot; query it on the running syste
 sysctl hw.warpgfx.version
 ```
 
-Pick a release matching your NetBSD version, or `warpgfx-current` if you track `-current`. Match the archive to your CPU and preferred resolution. Every binary archive ships the matching `netbsd-warpgfx` kernel, the release's accelerated Xorg `wsfb_drv.so.0` module, the `diag/` tools, and `BUILD-INFO.txt`.
+Pick a release matching your Warp firmware and NetBSD version, using the `-current` release if you track `-current`. Match the archive to your CPU and preferred resolution. Every binary archive ships the matching `netbsd-warpgfx` kernel, the release's accelerated Xorg `wsfb_drv.so.0` module, and `BUILD-INFO.txt`; WarpGFX 1.1 and later archives also ship the `diag/` tools.
 
 If you need the driver to apply for a NetBSD version not covered in releases, proceed to the [build a subset](#build-a-subset) section.
 
@@ -461,7 +465,7 @@ Building archives is always local and safe. Uploading happens only with `--publi
 ./scripts/create-dist-packages.sh --releases netbsd-current --formats "tar.gz"
 ```
 
-Each NetBSD version becomes one GitHub release tagged `warpgfx-<version>` containing that version's archives plus its `SHA256SUMS`. RC and `current` versions are marked prerelease automatically (override with `--stable`/`--prerelease`). The release title and notes show the WarpGFX driver version, taken from `WARPGFX_VERSION` in the driver header (override with `--driver-version`), and remind readers it is queryable with `sysctl hw.warpgfx.version`. Re-running `--publish` updates the release notes and clobbers changed assets, so moving the `current` pin and rebuilding refreshes its release in place.
+Each WarpGFX version and NetBSD version pair becomes one GitHub release, tagged and titled `warpgfx-<warpgfx-version>-netbsd-<version>` (for example `warpgfx-1.1-netbsd-11.0`; `--tag-prefix` selects `<prefix><version>` instead), containing that version's archives plus its `SHA256SUMS`. RC and `current` versions are marked prerelease automatically (override with `--stable`/`--prerelease`). The WarpGFX driver version in the tag, title, and notes comes from `WARPGFX_VERSION` in the driver header (override with `--driver-version`), and the notes remind readers it is queryable with `sysctl hw.warpgfx.version`. Re-running `--publish` updates that release's notes and clobbers changed assets, so moving the `current` pin and rebuilding refreshes its release in place. A new driver version creates new releases and leaves the older ones, and their checksums, untouched.
 
 ## Advanced Building
 
