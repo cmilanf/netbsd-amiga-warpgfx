@@ -7,7 +7,7 @@
 #   netbsd-amiga-<version>-warpgfx-<warpgfx-version>-<cpu>-<resolution>.lha
 #
 # where <version> is the release label with its leading "netbsd-" stripped
-# (e.g. 11.0, current), <cpu> is 68030|68040|68060, and <resolution> is the
+# (e.g. 11.0, current), <cpu> is 68040|68060, and <resolution> is the
 # pixel geometry mapped from the WARPGFX_MODE token (720 -> 1280x720, etc.).
 #
 # Building archives is always safe and local. Uploading to GitHub happens only
@@ -192,6 +192,19 @@ for label in $RELEASES; do
         chmod 0644 "$pkgdir/$KERNEL_NAME"
         cp "$kdir/wsfb_drv.so.0" "$pkgdir/wsfb_drv.so.0"
         chmod 0555 "$pkgdir/wsfb_drv.so.0"
+        # Diagnostic tools built by build-netbsd-amiga.sh go in diag/.
+        [ -x "$kdir/diag/warpregs" ] || \
+            die "missing diagnostic tools in ${kdir}diag (rebuild with build-netbsd-amiga.sh after a full build)"
+        mkdir "$pkgdir/diag"
+        for f in "$kdir"diag/*; do
+            [ -f "$f" ] || continue
+            name=${f##*/}
+            cp "$f" "$pkgdir/diag/$name"
+            case $name in
+                *.md|warptest-common.sh) chmod 0444 "$pkgdir/diag/$name" ;;
+                *) chmod 0555 "$pkgdir/diag/$name" ;;
+            esac
+        done
         driver_sum=$(sha256_file "$kdir/wsfb_drv.so.0")
         if [ -f "$kdir/BUILD-INFO.txt" ]; then
             sed '/^Driver SHA256:/d' "$kdir/BUILD-INFO.txt" > "$pkgdir/BUILD-INFO.txt"
@@ -251,12 +264,19 @@ for label in $RELEASES; do
         fi
         echo
         echo "Each archive contains a kernel (\`$KERNEL_NAME\`), the accelerated"
-        echo "Xorg module (\`wsfb_drv.so.0\`), and \`BUILD-INFO.txt\`. Pick the"
+        echo "Xorg module (\`wsfb_drv.so.0\`), \`BUILD-INFO.txt\`, and the WarpGFX"
+        echo "diagnostic tools in \`diag/\` (see \`diag/README.md\`). Pick the"
         echo "archive matching your CPU and desired 16-bit video resolution."
         echo "Keep your current working kernel and wsfb module as fallbacks before"
         echo "installing the replacements."
         echo
-        echo "Assets: \`.tar.gz\` and \`.lha\` per CPU (68030/68040/68060) and"
+        echo "Built for CS-Lab Warp 1260 firmware 2296 (csgfx.card 22.96)."
+        echo "On the author's Amiga 1200, 1920x1080 (148.5 MHz pixel clock) has"
+        echo "been unreliable with firmware 2296, under AmigaOS as well as NetBSD,"
+        echo "so these releases provide 640x480 and 1280x720 kernels. See Known"
+        echo "issues in the README; reports from other setups are welcome."
+        echo
+        echo "Assets: \`.tar.gz\` and \`.lha\` per CPU (68040/68060) and"
         echo "resolution. SHA-256 sums are in \`$(basename "$sums")\`."
         if [ -f "$ROOT/patches/$label/RELEASE-INFO.txt" ]; then
             echo

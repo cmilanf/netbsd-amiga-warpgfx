@@ -17,8 +17,8 @@ BUILD=$ROOT/scripts/build-netbsd-amiga.sh
 [ -f "$MANIFEST" ] || { echo "missing $MANIFEST" >&2; exit 1; }
 [ -x "$BUILD" ] || { echo "missing or non-executable $BUILD" >&2; exit 1; }
 
-CPUS='68030 68040 68060'
-MODES='720 1080'
+CPUS='68040 68060'
+MODES='480 720'
 RELEASES=
 JOBS=
 WORK_ROOT=${HOME:-/tmp}/warpgfx-release-build
