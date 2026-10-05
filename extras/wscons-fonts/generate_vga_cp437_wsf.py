@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026, Carlos Milán Figueredo
 # SPDX-License-Identifier: BSD-2-Clause
-# Developed with assistance from OpenAI GPT-5.6-Sol.
-"""Scale PC Face's Oldschool VGA 8x16 CP437 bitmap to a 24x40 WSF.
+# Developed with assistance from OpenAI GPT-5.6-Sol, Kiro, and
+# Anthropic Claude Opus 5.5.
+"""Scale PC Face's Oldschool VGA 8x16 CP437 bitmap to a WSF (default 24x40).
 
 The source glyphs remain in CP437 byte order, but the output deliberately uses
 WSDISPLAY_FONTENC_ISO.  NetBSD's vt100 emulator first maps bytes 0x80-0xff to
@@ -75,12 +76,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="pinned PC Face fontlist.js")
     parser.add_argument("output", type=Path, help="output WSF font")
+    parser.add_argument("--width", type=int, default=24)
+    parser.add_argument("--height", type=int, default=40)
     parser.add_argument(
         "--name",
-        default="WarpConsole-VGA-CP437-Raw-24x40",
-        help="embedded WSF font name",
+        help="embedded WSF font name "
+        "(default: WarpConsole-VGA-CP437-Raw-WIDTHxHEIGHT)",
     )
     args = parser.parse_args()
+    name = args.name or f"WarpConsole-VGA-CP437-Raw-{args.width}x{args.height}"
 
     source_path = args.source.resolve()
     output_path = args.output.resolve()
@@ -100,14 +104,15 @@ def main() -> None:
         byteorder=L2R,
         data=raw,
     )
-    output = scale_font(source, 24, 40, args.name)
+    output = scale_font(source, args.width, args.height, name)
     write_wsf(output, output_path)
 
     checked = read_wsf(output_path)
     if checked != output:
         raise RuntimeError("output did not round-trip through the WSF parser")
     print(
-        f"Oldschool VGA 8x16 CP437 raw -> {checked.name} 24x40 ISO/direct, "
+        f"Oldschool VGA 8x16 CP437 raw -> {checked.name} "
+        f"{checked.width}x{checked.height} ISO/direct, "
         f"{checked.numchars} glyphs, stride {checked.stride}, "
         f"{output_path.stat().st_size} bytes"
     )

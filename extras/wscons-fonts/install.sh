@@ -1,7 +1,8 @@
 #!/bin/sh
 # Copyright (c) 2026, Carlos Milán Figueredo
 # SPDX-License-Identifier: BSD-2-Clause
-# Developed with assistance from OpenAI GPT-5.6-Sol.
+# Developed with assistance from OpenAI GPT-5.6-Sol, Kiro, and
+# Anthropic Claude Opus 5.5.
 
 set -eu
 
@@ -263,13 +264,16 @@ process_directories()
 process_files()
 {
     action=$1
-    for file in WarpConsole-24x40.wsf \
-        WarpConsole-VGA-CP437-Raw-24x40.wsf; do
+    for file in WarpConsole-24x40.wsf WarpConsole-16x30.wsf \
+        WarpConsole-VGA-CP437-Raw-24x40.wsf \
+        WarpConsole-VGA-CP437-Raw-16x28.wsf \
+        WarpConsole-VGA-CP437-Raw-8x16.wsf; do
         "$action" "$SCRIPT_DIR/artifacts/$file" "$FONT_DIR/$file" 0444
         "$action" "$SCRIPT_DIR/artifacts/$file" \
             "$DOC_ARTIFACT_DIR/$file" 0444
     done
-    for file in README.md wscons.conf.example SHA256.txt; do
+    for file in README.md SHA256.txt wscons-1920x1080.conf.example \
+        wscons-1280x720.conf.example wscons-640x480.conf.example; do
         "$action" "$SCRIPT_DIR/$file" "$DOC_DIR/$file" 0444
     done
     for file in generate_scaled_wsf.py generate_vga_cp437_wsf.py validate.py \
@@ -298,8 +302,9 @@ cat <<EOF
 Fonts installed under: $FONT_DIR
 Reproducibility bundle installed under: $DOC_DIR
 No system configuration was changed.
-Review $DOC_DIR/wscons.conf.example and merge only the desired lines manually.
+Review the wscons-<resolution>.conf.example in $DOC_DIR that matches your
+WarpGFX kernel's mode and merge only the desired lines manually.
 EOF
 if [ "$PREFIX" != /usr/local ]; then
-    echo "Replace /usr/local in wscons.conf.example with your prefix: $PREFIX"
+    echo "Replace /usr/local in the example with your prefix: $PREFIX"
 fi

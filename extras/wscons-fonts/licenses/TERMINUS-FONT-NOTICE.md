@@ -12,12 +12,19 @@ Exact source used:
 - Source SHA-256:
   `b160154cb0ddafe191a5fa51a6d092630c80444d010b8282e36b9278c23afe8c`
 
-`artifacts/WarpConsole-24x40.wsf` modifies that bitmap by scaling every 16x32
-glyph to 24x40 with pixel-centred nearest-neighbour sampling and storing each
-row with a four-byte stride for NetBSD's generic rasops renderer. Its embedded
-name uses the non-reserved **WarpConsole** name, not the Reserved Font Name.
+Two artifacts modify that bitmap by rescaling every 16x32 glyph with
+pixel-centred nearest-neighbour sampling and storing each row with a four-byte
+stride for NetBSD's generic rasops renderer:
 
-The modified artifact remains licensed under the SIL Open Font License 1.1.
-Its SHA-256 is:
+| Artifact | Size | SHA-256 |
+| --- | --- | --- |
+| `artifacts/WarpConsole-24x40.wsf` | 24x40 | `6743dd2ea651dadd251de71c772f9c3bea17cfa576574cec5d6ce6b687a11911` |
+| `artifacts/WarpConsole-16x30.wsf` | 16x30 | `f86c3f8b995bf82cde4f7986c515dab5887e6a754de7bf90d4b3bab792a1928b` |
 
-`6743dd2ea651dadd251de71c772f9c3bea17cfa576574cec5d6ce6b687a11911`
+Their embedded names use the non-reserved **WarpConsole** name, not the
+Reserved Font Name. The modified artifacts remain licensed under the SIL Open
+Font License 1.1.
+
+The 640x480 example configuration uses NetBSD's own unmodified
+`/usr/share/wscons/fonts/ter-116n.wsf` (Terminus 8x16) in place; this bundle
+does not copy or modify it.

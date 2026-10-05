@@ -1,4 +1,4 @@
-# Optional WarpGFX 1920x1080 wscons font policy.
+# Optional WarpGFX 1920x1080 wscons font policy (kernel built with mode=1080).
 #
 # Merge selected lines into /etc/wscons.conf manually; do not replace the whole
 # system file. Keep ttyE0 unchanged as the boot/recovery console. This example
