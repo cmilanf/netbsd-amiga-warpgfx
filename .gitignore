@@ -11,3 +11,6 @@ output/
 *.swp
 *.swo
 *~
+
+# Warp 1260 driver
+amigaos_driver/
