@@ -5,29 +5,34 @@
 > **DISCLAIMER**  
 > This software is provided **AS IS**, without warranty of any kind, express or implied. There is no guarantee that it will work as described or that it is fit for any particular purpose. You use it entirely at your own risk. Because this project modifies kernel and Xorg components and drives real hardware, you are responsible for reviewing the source code, verifying its correct behavior in your own environment, and keeping backups and known-good fallbacks before installing or running any of it. The author accepts no liability for any damage, data loss, or other consequences arising from its use.
 >
-> **The code in this repository was developed with assistance from Kiro and OpenAI GPT-5.6-Sol.**
+> **This project was developed with the assistance of Kiro, OpenAI GPT-5.6-Sol, and Anthropic Claude Opus 5.5.**
 
 Prebuilt kernels are available from the [GitHub releases](#releases). Building from source runs on a NetBSD host: NetBSD's cross-build system supports building the `amiga` target from a different host architecture, so an `amd64` NetBSD machine can compile the amiga kernel and Xorg components; an Amiga host is not required for compilation. Installing the resulting kernel and Xorg module happens on the Amiga.
 
 Features:
 
-- six 16-bit `R5G6B5` video modes: 640x480, 800x600, 1024x768, 1280x720, 1280x1024, and 1920x1080;
+- targets CS-Lab Warp 1260 firmware 2296 (the register protocol of its `csgfx.card` 22.96; see the [version map](#warp-firmware-compatibility) and [Known issues](#known-issues));
+- six 16-bit `R5G6B5` video modes: 640x480, 800x600, 1024x768, 1280x720, 1280x1024, and 1920x1080 (1920x1080 has been unreliable with firmware 2296 on the author's setup, so releases ship 640x480 and 1280x720 kernels);
 - hardware rectangle fill/copy acceleration for the wscons console;
 - EXA Solid/Copy acceleration for Xorg through the standard wsfb driver;
-- red XOR text cursor, multiple virtual screens, and named 80x25 and 80x27 geometries;
-- optional reproducible 24x40 ISO and classic VGA raw-CP437 wscons font bundle;
+- red XOR text cursor, multiple virtual screens, and named 80x24, 80x25, 80x27, and 80x30 geometries;
+- optional reproducible wscons font bundle with exact-fit ISO and classic VGA raw-CP437 fonts for 640x480, 1280x720, and 1920x1080;
+- [diagnostic tools](diag/) that read, measure, and exercise the Warp display hardware from user space, included in every release archive;
 - the unconfigured Warp 1260 QSPI Flash device (product 5120/102) is identified but not accessed.
 
 ## Index
 
 - [Screenshots and video](#screenshots-and-video)
 - [Performance testing](#performance-testing)
+- [Warp firmware compatibility](#warp-firmware-compatibility)
+- [Known issues](#known-issues)
 - [Releases](#releases)
 - [Install](#install)
   - [Install the kernel](#install-the-kernel)
   - [Install the optional wscons fonts](#install-the-optional-wscons-fonts)
   - [Install the Xorg wsfb module](#install-the-xorg-wsfb-module)
   - [Configure and verify Xorg](#configure-and-verify-xorg)
+- [Diagnostic tools](#diagnostic-tools)
 - [Building](#building)
   - [Target releases](#target-releases)
   - [Creating releases](#creating-releases)
@@ -124,6 +129,43 @@ Results are available in the `testing/x11perf` folder. The following table is a 
   - **Average results**. Average operations per second.
   - **Improvement**. Improvement compared to AGA as baseline.
 
+## Warp firmware compatibility
+
+Version map. Every result comes from the author's setup (see [Known issues](#known-issues)); reports from other machines are welcome.
+
+| WarpGFX | Release archives | Follows | Warp firmware 1768 | Warp firmware 2296 |
+| --- | --- | --- | --- | --- |
+| 1.0 | `*-warpgfx-1.0-*`: 68030/68040/68060, 1280x720 and 1920x1080 | `csgfx.card` 17.68 | Works at 1920x1080 | No picture at 1920x1080, the only mode tried; other modes not tested |
+| 1.1 | `*-warpgfx-1.1-*`: 68040/68060, 640x480 and 1280x720 | `csgfx.card` 22.96 | Not tested | 1280x720 works, console and X with EXA. 640x480, 800x600, 1024x768, and 1280x1024 displayed during the diagnostic mode tests; the 640x480 release kernel has not been booted yet. 1920x1080 unreliable, see [Known issues](#known-issues) |
+
+Query the version of the running driver with `sysctl hw.warpgfx.version`.
+
+WarpGFX 1.1 follows the register protocol of `csgfx.card` 22.96, the AmigaOS driver shipped with Warp 1260 firmware 2296. Compared with `csgfx.card` 17.68 (firmware 1768), which WarpGFX 1.0 followed, the observed changes are:
+
+- pixel clock 0 runs at 25.175 MHz instead of 31.5 MHz, so the 640x480 mode now uses standard 60 Hz timing (800x525 total) instead of about 75 Hz;
+- bits 0 and 1 of the mode register select negative vertical and horizontal sync; firmware 2296 sets both for 640x480 and 1024x768 and neither for 800x600, 1280x720, 1280x1024, and 1920x1080;
+- the commit bit of the mode register is pulsed after a pixel-clock change.
+
+The timing, pitch, clock, and commit values for 800x600, 1280x720, 1280x1024, and 1920x1080 are the same in both drivers. WarpGFX 1.1 additionally disables the Warp vertical-blank interrupt and the unused hardware sprite during attach, as `csgfx.card` does through `SetInterrupt(FALSE)` and `SetSprite(FALSE)`, and waits for the previous pixel clock's ready flag to clear before waiting for the new clock to lock.
+
+## Known issues
+
+**1920x1080 with Warp firmware 2296.** These results come from a single setup, the author's: an Amiga 1200 with a Warp 1260 (68060) on firmware 2296 and one monitor. The tests were run through an OSSC Pro scaler and repeated with the Warp connected directly to the monitor. One machine is not enough to say where the problem lies, so more testing is welcome.
+
+- The WarpGFX 1.0 1920x1080 kernel, which had worked on firmware 1768, showed no picture after the update to 2296. The monitor stayed black, and the OSSC Pro reported "out of range" or no sync.
+- WarpGFX 1.1 programs the register values that `csgfx.card` 22.96 uses. The [diagnostic tools](#diagnostic-tools) showed correct 1080p60 timing (59.97 Hz measured) and a locked 148.5 MHz pixel clock. Even so, the monitor kept the picture for about a second at most.
+- Every mode on the 74.25 MHz clock or below held, including 1920x1080 at 30 Hz. Both modes on the 148.5 MHz clock, 1920x1080 at 60 Hz and at 50 Hz, dropped, whichever order the registers were written in.
+- AmigaOS with `csgfx.card` 22.96 on the same machine did not display 1920x1080 either, with the Warp output set to DVI or HDMI; 1280x720 and 640x480 worked.
+- On a later boot, the same WarpGFX 1.1 1920x1080 kernel did show a picture, with some flickering.
+
+So far the problem has appeared only with the 148.5 MHz pixel clock, and it has not behaved the same on every boot. That is not enough data to tell which part of the chain is involved: the Warp board, its firmware, the cable, or the monitor. If you use firmware 2296 at 1920x1080, under NetBSD or AmigaOS, please [open an issue](https://github.com/cmilanf/netbsd-amiga-warpgfx/issues) describing what you see. Include your monitor, cable, and output setting (DVI or HDMI), and, under NetBSD, the output of `warpregs`, `warpvsync`, and `warptest-1080.sh`.
+
+Meanwhile:
+
+- the releases ship 1280x720 and 640x480 kernels;
+- if 1920x1080 works on your setup, build a WarpGFX 1.1 1920x1080 kernel with `./scripts/build-releases.sh --modes 1080` (see [Build a subset](#build-a-subset));
+- on firmware 1768, the WarpGFX 1.0 1920x1080 kernels work on the author's setup; WarpGFX 1.1 has not been tested on firmware 1768.
+
 ## Releases
 
 Prebuilt kernel/module bundles are published on the [GitHub releases page](https://github.com/cmilanf/netbsd-amiga-warpgfx/releases). There is one release per target NetBSD version:
@@ -140,11 +182,11 @@ netbsd-amiga-<version>-warpgfx-<warpgfx-version>-<cpu>-<resolution>.{tar.gz,lha}
 ```
 
 - `<version>` is the NetBSD version: `11.0` or `current`.
-- `<warpgfx-version>` is the WarpGFX driver version, e.g. `1.0`.
-- `<cpu>` is `68030`, `68040`, or `68060`.
-- `<resolution>` is the console/X resolution: `1280x720` or `1920x1080`.
+- `<warpgfx-version>` is the WarpGFX driver version, e.g. `1.1`.
+- `<cpu>` is `68040` or `68060`, the CPUs fitted to Warp accelerators.
+- `<resolution>` is the console/X resolution: `640x480` or `1280x720` (1920x1080 has been unreliable with firmware 2296 on the author's setup; see [Known issues](#known-issues)).
 
-Each archive holds a single top-level directory containing the kernel (`netbsd-warpgfx`), the accelerated Xorg driver (`wsfb_drv.so.0`), and `BUILD-INFO.txt`, which records the `src`/`xsrc` commits, CPU, WarpGFX options, and SHA-256 hashes for both binaries. A `SHA256SUMS-<version>.txt` in the release lists the checksum of every archive. Kernels are built reproducibly (`MKREPRO`), so a given archive's contents are deterministic.
+Each archive holds a single top-level directory containing the kernel (`netbsd-warpgfx`), the accelerated Xorg driver (`wsfb_drv.so.0`), the [diagnostic tools](#diagnostic-tools) in `diag/`, and `BUILD-INFO.txt`, which records the `src`/`xsrc` commits, CPU, WarpGFX options, and SHA-256 hashes for the kernel, the driver, and every diagnostic binary. A `SHA256SUMS-<version>.txt` in the release lists the checksum of every archive. Kernels are built reproducibly (`MKREPRO`), so a given archive's contents are deterministic.
 
 The WarpGFX driver version is not printed at boot; query it on the running system with:
 
@@ -152,7 +194,7 @@ The WarpGFX driver version is not printed at boot; query it on the running syste
 sysctl hw.warpgfx.version
 ```
 
-Pick a release matching your NetBSD version, or `warpgfx-current` if you track `-current`. Match the archive to your CPU and preferred resolution. Every binary archive ships the matching `netbsd-warpgfx` kernel, the release's accelerated Xorg `wsfb_drv.so.0` module, and `BUILD-INFO.txt`.
+Pick a release matching your NetBSD version, or `warpgfx-current` if you track `-current`. Match the archive to your CPU and preferred resolution. Every binary archive ships the matching `netbsd-warpgfx` kernel, the release's accelerated Xorg `wsfb_drv.so.0` module, the `diag/` tools, and `BUILD-INFO.txt`.
 
 If you need the driver to apply for a NetBSD version not covered in releases, proceed to the [build a subset](#build-a-subset) section.
 
@@ -165,23 +207,27 @@ Installation is performed on the Amiga. Always keep a known-good fallback before
 1. Download the archive matching your CPU and resolution from the [release](#releases), and verify it against the release's `SHA256SUMS-<version>.txt`:
 
    ```sh
-   sha256 -q netbsd-amiga-11.0-warpgfx-1.0-68060-1920x1080.tar.gz
+   sha256 -q netbsd-amiga-11.0-warpgfx-1.1-68060-1280x720.tar.gz
    ```
 
 2. Extract it. Both formats yield the same layout:
 
    ```sh
-   tar xzf netbsd-amiga-11.0-warpgfx-1.0-68060-1920x1080.tar.gz
-   # or, on AmigaOS/with lha: lha x netbsd-amiga-11.0-warpgfx-1.0-68060-1920x1080.lha
+   tar xzf netbsd-amiga-11.0-warpgfx-1.1-68060-1280x720.tar.gz
+   # or, on AmigaOS/with lha: lha x netbsd-amiga-11.0-warpgfx-1.1-68060-1280x720.lha
    ```
 
    This produces:
 
    ```text
-   netbsd-amiga-11.0-warpgfx-1.0-68060-1920x1080/
+   netbsd-amiga-11.0-warpgfx-1.1-68060-1280x720/
    ├── netbsd-warpgfx
    ├── wsfb_drv.so.0
-   └── BUILD-INFO.txt
+   ├── BUILD-INFO.txt
+   └── diag/
+       ├── README.md
+       ├── warpregs, warpvsync, warpclkmon, warpreg, warpmode, warpredraw
+       └── warptest-common.sh, warptest-modes.sh, warptest-1080.sh
    ```
 
 3. Keep your current working kernel as a fallback, then place the new `netbsd-warpgfx` where your Amiga bootblock or AmigaOS `loadbsd` setup loads it. Test it without removing the known-good kernel.
@@ -200,7 +246,7 @@ The accelerated Xorg support is the standard `wsfb` driver rebuilt with the Warp
 Stop X, change to the extracted archive directory, back up the installed module, and install the archive's module as root:
 
 ```sh
-cd netbsd-amiga-11.0-warpgfx-1.0-68060-1920x1080
+cd netbsd-amiga-11.0-warpgfx-1.1-68060-1280x720
 cp /usr/X11R7/lib/modules/drivers/wsfb_drv.so.0 \
    /usr/X11R7/lib/modules/drivers/wsfb_drv.so.0.backup
 install -m 0555 ./wsfb_drv.so.0 \
@@ -241,7 +287,13 @@ If acceleration causes a regression, `Option "Accel" "false"` selects the alread
 
 ### Install the optional wscons fonts
 
-The optional [`extras/wscons-fonts`](extras/wscons-fonts/) bundle provides the validated 24x40 WSF needed for exact 1920x1080 coverage (`80×24=1920`, `27×40=1080`) plus a classic VGA raw-CP437 font for an 80x25 ANSI/BBS console. It works using the `80x27` named screen type exported by the WarpGFX kernel driver, fixing terminal geometry at 80 columns by 27 rows.
+The optional [`extras/wscons-fonts`](extras/wscons-fonts/) bundle provides, for each of the 640x480, 1280x720, and 1920x1080 kernels, an ISO font that fills the screen exactly at 80 columns plus a classic VGA raw-CP437 font for an 80x25 ANSI/BBS console. It uses the named screen types exported by the WarpGFX kernel driver:
+
+| Kernel mode | ISO screen and font | Raw CP437 screen and font |
+| ----------- | ------------------- | ------------------------- |
+| 640x480 | `80x30`, NetBSD's own Terminus 8x16 (`ter-116n.wsf`) | `80x25`, 8x16 |
+| 1280x720 | `80x24`, WarpConsole 16x30 | `80x25`, 16x28 |
+| 1920x1080 | `80x27`, WarpConsole 24x40 | `80x25`, 24x40 |
 
 Install the bundle on the Amiga:
 
@@ -254,7 +306,16 @@ cd extras/wscons-fonts
 
 The installer places fonts under `/usr/local/share/wscons/fonts` and a complete offline reproducibility bundle under `/usr/local/share/doc/warpgfx-wscons-fonts`.
 
-Manually merge the desired directives from [`wscons.conf.example`](extras/wscons-fonts/wscons.conf.example). The complete example keeps ttyE0 unchanged as the recovery console, configures E1-E3 as exact-fit ISO `80x27` screens, configures E4 as a classic VGA raw-CP437 `80x25` screen.
+Manually merge the desired directives from the example matching your kernel's mode: [`wscons-640x480.conf.example`](extras/wscons-fonts/wscons-640x480.conf.example), [`wscons-1280x720.conf.example`](extras/wscons-fonts/wscons-1280x720.conf.example), or [`wscons-1920x1080.conf.example`](extras/wscons-fonts/wscons-1920x1080.conf.example). Each keeps ttyE0 unchanged as the recovery console, configures E1-E3 as exact-fit ISO screens, and configures E4 as a classic VGA raw-CP437 `80x25` screen. The `80x24` and `80x30` screen types need WarpGFX 1.1 or newer. When you change kernel modes, switch to the matching example as well. WarpGFX 1.0 panics with an MMU fault in `vcons_eraserows` when a font is too large for its screen, for example the 1920x1080 example on a 1280x720 kernel. WarpGFX 1.1 shrinks that screen to the largest geometry that fits (53x18 in that case).
+
+## Diagnostic tools
+
+The [`diag/`](diag/) directory contains small NetBSD/amiga programs that show what the Warp display hardware is actually doing, independently of what the monitor shows. Prebuilt binaries are in every release archive under `diag/`; [`diag/README.md`](diag/README.md) covers each tool, building them natively or by cross-compiling, and safety.
+
+- Read-only, usable on any kernel: `warpregs` dumps and decodes the display registers (mode, timing, pixel clock, sync polarity), `warpvsync` measures the real refresh rate, and `warpclkmon` watches the pixel clock for loss of lock.
+- Writing, for testing: `warpreg` reads or writes one register, `warpmode` programs a complete mode and fills the screen with a colour, `warpredraw` restores the text console, and `warptest-modes.sh` and `warptest-1080.sh` cycle through modes so you can note which ones a monitor accepts.
+
+All of them need root. The writing tools also need `kern.securelevel` 0 or lower, which on NetBSD 11 means booting a test kernel built with the `insecure` WarpGFX build token (see [Single end-to-end build](#single-end-to-end-build)); keep a normal kernel as the default. The tools only ever map the 4 KiB display block of the Warp control registers, never the mailbox AmigaOS uses to talk to the Warp.
 
 ## Building
 
@@ -355,7 +416,7 @@ Because the release commits come from the NetBSD GitHub mirrors, which expose br
 
 ### Creating releases
 
-`scripts/build-releases.sh` builds every active release against each CPU and video mode. For each release it runs a full build (with neither `--no-xorg` nor `--only-kernel`) until one combination successfully produces both the kernel and accelerated `wsfb_drv.so.0`. Later combinations reuse the release's module and build kernels with `--only-kernel`; if a full build fails, the next combination attempts another full build. Every successful output directory contains `netbsd-warpgfx`, `wsfb_drv.so.0`, and `BUILD-INFO.txt` with both SHA-256 hashes. `RELEASE-SUMMARY.txt` lists the kernel and driver SHA-256 for each successful combination.
+`scripts/build-releases.sh` builds every active release against each CPU and video mode. For each release it runs a full build (with neither `--no-xorg` nor `--only-kernel`) until one combination successfully produces both the kernel and accelerated `wsfb_drv.so.0`. Later combinations reuse the release's module and build kernels with `--only-kernel`; if a full build fails, the next combination attempts another full build. Every successful output directory contains `netbsd-warpgfx`, `wsfb_drv.so.0`, the cross-compiled `diag/` tools, and `BUILD-INFO.txt` with the SHA-256 hashes of all of them. `RELEASE-SUMMARY.txt` lists the kernel and driver SHA-256 for each successful combination.
 
 ```sh
 ./scripts/build-releases.sh --dry-run              # print the planned builds
@@ -364,7 +425,7 @@ Because the release commits come from the NetBSD GitHub mirrors, which expose br
   --output  "$HOME/warpgfx-release-repo/output"
 ```
 
-Defaults are every active release x `68030 68040 68060` x `720 1080` (twelve kernel/module combinations for two releases). A failed combination is recorded and the release build continues; the script exits non-zero if any combination failed.
+Defaults are every active release x `68040 68060` x `480 720` (eight kernel/module combinations for two releases). Pass `--cpus 68030` to build a 68030 kernel; `build-netbsd-amiga.sh` still supports it. A failed combination is recorded and the release build continues; the script exits non-zero if any combination failed.
 
 When the patches have changed since a previous run (for example after editing the driver and regenerating them), pass `--reset-sources`. On the first combination of each release it discards cached source edits and reapplies the current patch, preserving the cached cross-tools and objects:
 
@@ -390,7 +451,7 @@ Restrict any axis to build only what you need:
 netbsd-amiga-<version>-warpgfx-<warpgfx-version>-<cpu>-<resolution>.{tar.gz,lha}
 ```
 
-`<version>` is the release label without its `netbsd-` prefix (`11.0`, `current`), `<warpgfx-version>` is the driver version (from `WARPGFX_VERSION` in the driver header, or `--driver-version`), and `<resolution>` is the pixel geometry mapped from the `WARPGFX_MODE` token (`720`→`1280x720`, `1080`→`1920x1080`, and so on). Each archive holds a single top-level directory with the kernel (named `netbsd-warpgfx` by default; change with `--kernel-name`), `wsfb_drv.so.0` installed with mode `0555`, and `BUILD-INFO.txt` containing both artifact hashes. A `SHA256SUMS-<version>.txt` accompanies each version's archives. Building archives requires `tar`, `gzip`, and an `lha` implementation; publishing additionally requires an authenticated `gh`.
+`<version>` is the release label without its `netbsd-` prefix (`11.0`, `current`), `<warpgfx-version>` is the driver version (from `WARPGFX_VERSION` in the driver header, or `--driver-version`), and `<resolution>` is the pixel geometry mapped from the `WARPGFX_MODE` token (`720`→`1280x720`, `1080`→`1920x1080`, and so on). Each archive holds a single top-level directory with the kernel (named `netbsd-warpgfx` by default; change with `--kernel-name`), `wsfb_drv.so.0` installed with mode `0555`, the `diag/` tools, and `BUILD-INFO.txt` containing the artifact hashes. A combination without `diag/` tools is rejected. A `SHA256SUMS-<version>.txt` accompanies each version's archives. Building archives requires `tar`, `gzip`, and an `lha` implementation; publishing additionally requires an authenticated `gh`.
 
 Building archives is always local and safe. Uploading happens only with `--publish`; without it the script builds every archive and prints the exact `gh` commands it would run:
 
@@ -415,7 +476,8 @@ This section covers the lower-level tools used by the release build: the single 
 - `scripts/canonical-patch-config.sh`: the single machine-readable source of truth for upstream URLs, pinned base commits, and the managed path lists. Always update pins and paths here, never hard-code them elsewhere. Its managed path lists are whitespace-delimited, so managed paths must not contain whitespace or shell wildcard characters. It is sourced configuration, not a standalone command.
 - `patches/canonical/SHA256.txt`: SHA-256 checksums for the two canonical patch files (regenerated by the scripts).
 - `scripts/create-release-patches.conf` and `patches/<label>/`: the multi-release manifest and generated per-release patch sets (see [Target releases](#target-releases)).
-- `extras/wscons-fonts/`: optional reproducible ISO 80x27 and VGA raw-CP437 80x25 console fonts, a non-destructive installer, example configuration, validation, and separately scoped font licenses.
+- `extras/wscons-fonts/`: optional reproducible exact-fit ISO and VGA raw-CP437 80x25 console fonts for 640x480, 1280x720, and 1920x1080, a non-destructive installer, per-mode example configurations, validation, and separately scoped font licenses.
+- `diag/`: the diagnostic tools, their build files, and their documentation. They are not part of the NetBSD overlay or the patches.
 - `ATTRIBUTIONS.md`: authorship, provenance, and licensing record.
 
 The clean base commits are the unmodified upstream revisions against which the patches are generated. Their immutable commit IDs are in `scripts/canonical-patch-config.sh`. To clone the official mirrors and check out those exact bases:
@@ -432,7 +494,7 @@ Do not apply a complete patch to a tree that already contains an earlier WarpGFX
 
 ### Single end-to-end build
 
-`scripts/build-netbsd-amiga.sh` is the individual builder that the release builder drives. On a NetBSD host it checks the build environment and Git package, verifies the patches against their checksums, fetches the pinned `src` and `xsrc` commits, builds amiga tools, the kernel, and Xorg, and copies the kernel and accelerated `wsfb` module into `output/`:
+`scripts/build-netbsd-amiga.sh` is the individual builder that the release builder drives. On a NetBSD host it checks the build environment and Git package, verifies the patches against their checksums, fetches the pinned `src` and `xsrc` commits, builds amiga tools, the kernel, and Xorg, cross-compiles the [diagnostic tools](#diagnostic-tools), and copies the kernel, the accelerated `wsfb` module, and `diag/` into `output/`:
 
 ```sh
 ./scripts/build-netbsd-amiga.sh
@@ -442,10 +504,12 @@ Select a CPU-specific kernel configuration and WarpGFX options when needed:
 
 ```sh
 ./scripts/build-netbsd-amiga.sh --cpu 68060 \
-  --warpgfx console,accel,mode=1080,no-debug --jobs 2
+  --warpgfx console,accel,mode=720,no-debug --jobs 2
 ```
 
-`--cpu` accepts `68030`, `68040`, or `68060`. It generates a small kernel configuration that includes `WSCONS` and disables the other CPU options (and their FPU/SP options — see [Kernel configuration options](#kernel-configuration-options)); NetBSD then selects the appropriate compiler flags automatically. Omitting `--cpu` preserves NetBSD's default amiga CPU support. WarpGFX option tokens default to `console,accel,mode=720,no-debug`; supported `mode=` values are `480`, `600`, `720`, `768`, `1024`, and `1080`. Run the script with `--help` for the full list of tokens, workspace, and output controls.
+`--cpu` accepts `68030`, `68040`, or `68060`. It generates a small kernel configuration that includes `WSCONS` and disables the other CPU options (and their FPU/SP options — see [Kernel configuration options](#kernel-configuration-options)); NetBSD then selects the appropriate compiler flags automatically. Omitting `--cpu` preserves NetBSD's default amiga CPU support. WarpGFX option tokens default to `console,accel,mode=720,no-debug`; supported `mode=` values are `480`, `600`, `720`, `768`, `1024`, and `1080`. `debug` adds the driver's attach-time register dumps. `insecure` adds `options INSECURE`, which runs the kernel at securelevel -1 so root can write the Warp registers with the diagnostic tools; build such a kernel only for testing, and never make it the default boot kernel of a networked system. Run the script with `--help` for the full list of tokens, workspace, and output controls.
+
+The diagnostic tools are compiled with the workspace's NetBSD/amiga cross-compiler against its destination tree, so they need a workspace in which one full build has run; `--only-kernel` builds reuse it. A `--no-xorg` build does not populate that tree and skips them with a note. `--no-diag` skips them explicitly. Their SHA-256 hashes are recorded in `BUILD-INFO.txt`.
 
 Kernel builds are reproducible by default: the script passes `MKREPRO=yes`, preventing the kernel version string from embedding the build username, hostname, timestamp, and object directory. Pass `--non-reproducible` to restore NetBSD's traditional version string with those host details. The generated version object is refreshed on every run so switching modes cannot reuse stale metadata from the persistent build cache.
 
@@ -453,7 +517,7 @@ Use `--only-kernel` when an Xorg rebuild is unnecessary:
 
 ```sh
 ./scripts/build-netbsd-amiga.sh --only-kernel --cpu 68060 \
-  --warpgfx console,accel,mode=1080,no-debug
+  --warpgfx console,accel,mode=720,no-debug
 ```
 
 Kernel-only mode requires an existing `tools-amiga` cache from a previous full build. It reuses those cross-tools without running the tools target, executes only the kernel build target, and writes the kernel plus `BUILD-INFO.txt` to `output/`. It does not build the Xorg distribution or `wsfb` driver. An existing `output/wsfb_drv.so.0` is left unchanged and is not listed in the new build metadata. `--no-xorg` builds the cross-tools and kernel but skips the Xorg distribution, which is useful when bootstrapping a fresh workspace without needing an Xorg module. On a fresh workspace, run one full build, or a `--no-xorg` build, before using `--only-kernel`.
@@ -541,11 +605,11 @@ The relevant WarpGFX options in `WSCONS` are:
 warpgfx* at zbus?
 options  WARPGFX_CONSOLE
 options  WARPGFX_ACCEL
-options  WARPGFX_MODE=1080
+options  WARPGFX_MODE=720
 #options WARPGFX_DEBUG
 ```
 
-Supported 16-bit mode values are `480`, `600`, `720`, `768`, `1024`, and `1080`. Omitting `WARPGFX_DEBUG` suppresses register dumps; normal device and acceleration status lines remain. The driver software version (`WARPGFX_VERSION` in `sys/arch/amiga/dev/warpgfxreg.h`) is not printed at boot; it is exposed as the read-only sysctl `hw.warpgfx.version`.
+Supported 16-bit mode values are `480`, `600`, `720`, `768`, `1024`, and `1080`; on Warp firmware 2296 `1080` does not display (see [Known issues](#known-issues)). Whatever the mode, the driver exports the named wscons screen types `80x24`, `80x25`, `80x27`, and `80x30` in addition to the default full-screen geometry; fixed-geometry screens are centred. Omitting `WARPGFX_DEBUG` suppresses register dumps; normal device and acceleration status lines remain. The driver software version (`WARPGFX_VERSION` in `sys/arch/amiga/dev/warpgfxreg.h`) is not printed at boot; it is exposed as the read-only sysctl `hw.warpgfx.version`.
 
 Build a derived configuration directly with `build.sh`:
 
