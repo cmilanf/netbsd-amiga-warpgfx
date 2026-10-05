@@ -2,7 +2,7 @@
 
 /*-
  * Copyright (c) 2026 Carlos Milán Figueredo
- * with assistance from OpenAI gpt-5.6-sol
+ * with assistance from OpenAI gpt-5.6-sol, Kiro, and Anthropic Claude Opus 5.5
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -36,15 +36,25 @@
  * built against and of any (unread) Warp board firmware.  It is available
  * through the read-only hw.warpgfx.version sysctl.
  */
-#define WARPGFX_VERSION		"1.0"
+#define WARPGFX_VERSION		"1.1"
 
 /*
  * CS-Lab Warp GFX interface.
  *
  * These definitions were derived from the public Zorro configuration
  * interface and from observing the register accesses made by csgfx.card
- * 20.25.  Names for registers whose exact hardware name is not known are
- * intentionally descriptive rather than authoritative.
+ * 17.68 (Warp firmware 1768) and 22.96 (Warp firmware 2296).  Names for
+ * registers whose exact hardware name is not known are intentionally
+ * descriptive rather than authoritative.
+ *
+ * Firmware 2296 changes observed in csgfx.card 22.96:
+ *  - pixel clock 0 is now 25.175 MHz (it was 31.5 MHz), so 640x480 uses
+ *    standard 60 Hz timing instead of the former 75 Hz timing;
+ *  - the mode register carries per-mode sync polarity in bits 0 and 1;
+ *  - after a pixel-clock change the mode register commit bit is pulsed.
+ * Timing, pitch, clock, and commit values for 800x600, 1280x720,
+ * 1280x1024, and 1920x1080 are identical in both versions; 1024x768 gains
+ * negative sync polarity.
  */
 
 /* Zorro IDs. */
@@ -99,6 +109,11 @@
 #define WARPGFX_REG_MODE_COMMIT		0x011c
 #define WARPGFX_REG_SCALE_CONTROL	0x0128
 
+/* WARPGFX_REG_SCALE_CONTROL bits (SetSprite and SetGC in csgfx.card). */
+#define WARPGFX_SCALE_SPRITE_ENABLE	0x00000001U
+#define WARPGFX_SCALE_SPRITE_DOUBLE	0x00000002U
+#define WARPGFX_SCALE_FACTOR_MASK	0x0000003cU
+
 /* Pixel-clock selector, lock status, and interrupt control. */
 #define WARPGFX_REG_CLOCK_STATUS	0x0200
 #define WARPGFX_REG_CLOCK_CONTROL	0x0204
@@ -106,6 +121,21 @@
 #define WARPGFX_REG_INTERRUPT_CONTROL	0x020c
 #define WARPGFX_CLOCK_SELECT_MASK	0x00000007U
 #define WARPGFX_CLOCK_READY		0x00000002U
+
+/*
+ * Values csgfx.card writes to WARPGFX_REG_INTERRUPT_CONTROL from
+ * SetInterrupt(): 3 enables the vertical-blank interrupt (INT2), 2 disables
+ * it.  Its INT2 handler rewrites the register after seeing bit 0 of
+ * WARPGFX_REG_INTERRUPT_STATUS, apparently to acknowledge the interrupt.
+ */
+#define WARPGFX_INTERRUPT_VBLANK_OFF	0x00000002U
+#define WARPGFX_INTERRUPT_VBLANK_ON	0x00000003U
+
+/*
+ * Pixel-clock indices from the csgfx.card 22.96 clock table:
+ * 0 = 25.175, 1 = 40, 2 = 65, 3 = 74.25, 4 = 108, 5 = 148.5 MHz.
+ * The control value written is the index with bit 4 set.
+ */
 #define WARPGFX_480P_CLOCK_SELECT	0x00000000U
 #define WARPGFX_480P_CLOCK_CONTROL	0x00000010U
 #define WARPGFX_600P_CLOCK_SELECT	0x00000001U
@@ -124,15 +154,21 @@
 #define WARPGFX_REG_COMMAND		0x0c00
 #define WARPGFX_REG_COMMAND_RESET	0x0c04
 
-/* 640x480 at approximately 75 Hz, 16-bit big-endian R5G6B5. */
+/*
+ * 640x480p60 (25.175 MHz, 800x525 total), 16-bit big-endian R5G6B5.
+ * Firmware 2296 runs pixel clock 0 at 25.175 MHz; csgfx.card 17.68 used
+ * 640x480 at about 75 Hz on a 31.5 MHz clock 0.
+ */
 #define WARPGFX_480P_FORMAT_PITCH	0x14078050U
 #define WARPGFX_480P_H_ACTIVE		0x00000280U
-#define WARPGFX_480P_H_TIMING_1		0x00280348U
-#define WARPGFX_480P_H_TIMING_2		0x002902d0U
+#define WARPGFX_480P_H_TIMING_1		0x00280320U
+#define WARPGFX_480P_H_TIMING_2		0x002902f0U
 #define WARPGFX_480P_V_ACTIVE		0x000001e0U
-#define WARPGFX_480P_V_TIMING_1		0x001e01f4U
-#define WARPGFX_480P_V_TIMING_2		0x001e11e4U
-#define WARPGFX_480P_HV_TOTAL		0x001f4348U
+#define WARPGFX_480P_V_TIMING_1		0x001e020dU
+#define WARPGFX_480P_V_TIMING_2		0x001ea1ecU
+#define WARPGFX_480P_HV_TOTAL		0x0020d320U
+#define WARPGFX_480P_SYNC \
+	(WARPGFX_MODE_SYNC_NEG_H | WARPGFX_MODE_SYNC_NEG_V)
 
 /* 800x600, 16-bit big-endian R5G6B5 mode values. */
 #define WARPGFX_600P_FORMAT_PITCH	0x19096064U
@@ -143,6 +179,7 @@
 #define WARPGFX_600P_V_TIMING_1		0x00258274U
 #define WARPGFX_600P_V_TIMING_2		0x0025925dU
 #define WARPGFX_600P_HV_TOTAL		0x00274420U
+#define WARPGFX_600P_SYNC		0x00000000U
 
 /* 1280x720, 16-bit big-endian R5G6B5 mode values. */
 #define WARPGFX_720P_FORMAT_PITCH	0x280b40a0U
@@ -153,6 +190,7 @@
 #define WARPGFX_720P_V_TIMING_1		0x002d02eeU
 #define WARPGFX_720P_V_TIMING_2		0x002d52daU
 #define WARPGFX_720P_HV_TOTAL		0x002ee672U
+#define WARPGFX_720P_SYNC		0x00000000U
 
 /* 1024x768, 16-bit big-endian R5G6B5 mode values. */
 #define WARPGFX_768P_FORMAT_PITCH	0x200c0080U
@@ -163,6 +201,8 @@
 #define WARPGFX_768P_V_TIMING_1		0x00300326U
 #define WARPGFX_768P_V_TIMING_2		0x00303309U
 #define WARPGFX_768P_HV_TOTAL		0x00326540U
+#define WARPGFX_768P_SYNC \
+	(WARPGFX_MODE_SYNC_NEG_H | WARPGFX_MODE_SYNC_NEG_V)
 
 /* 1280x1024, 16-bit big-endian R5G6B5 mode values. */
 #define WARPGFX_1024P_FORMAT_PITCH	0x281000a0U
@@ -173,6 +213,7 @@
 #define WARPGFX_1024P_V_TIMING_1	0x0040042aU
 #define WARPGFX_1024P_V_TIMING_2	0x00401404U
 #define WARPGFX_1024P_HV_TOTAL		0x0042a698U
+#define WARPGFX_1024P_SYNC		0x00000000U
 
 /* 1920x1080p60, 16-bit big-endian R5G6B5 mode values. */
 #define WARPGFX_1080P_FORMAT_PITCH	0x3c10e0f0U
@@ -183,9 +224,26 @@
 #define WARPGFX_1080P_V_TIMING_1	0x00438465U
 #define WARPGFX_1080P_V_TIMING_2	0x0043c441U
 #define WARPGFX_1080P_HV_TOTAL		0x00465898U
+#define WARPGFX_1080P_SYNC		0x00000000U
 
-/* Bit 7 selects the Warp framebuffer instead of the external/native input. */
-#define WARPGFX_MODE_COMMIT		0x0000008cU
-#define WARPGFX_MODE_ENABLE		0x00000088U
+/*
+ * WARPGFX_REG_MODE_COMMIT bits.
+ *
+ * Bit 7 selects the Warp framebuffer instead of the external/native input.
+ * Bit 3 selects 16-bit pixels (bit 4 would select 32-bit).  Writing the
+ * value with bit 2 set and then clear commits the programmed mode; firmware
+ * 2296 csgfx.card also issues that pulse after every pixel-clock change.
+ * Bits 0 and 1 are new in csgfx.card 22.96: it sets both for 640x480 and
+ * 1024x768, only bit 1 for 640x400, and neither for 800x600, 1280x720,
+ * 1280x1024, or 1920x1080, matching negative vertical and horizontal sync
+ * polarity of the standard VESA/CEA timings.
+ */
+#define WARPGFX_MODE_FB_SELECT		0x00000080U
+#define WARPGFX_MODE_FORMAT_16		0x00000008U
+#define WARPGFX_MODE_COMMIT_PULSE	0x00000004U
+#define WARPGFX_MODE_SYNC_NEG_H		0x00000002U
+#define WARPGFX_MODE_SYNC_NEG_V		0x00000001U
+#define WARPGFX_MODE_SYNC_MASK \
+	(WARPGFX_MODE_SYNC_NEG_H | WARPGFX_MODE_SYNC_NEG_V)
 
 #endif /* _AMIGA_DEV_WARPGFXREG_H_ */

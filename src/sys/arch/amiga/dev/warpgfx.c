@@ -30,7 +30,7 @@
 
 /*-
  * Copyright (c) 2026 Carlos Milán Figueredo
- * with assistance from OpenAI gpt-5.6-sol
+ * with assistance from OpenAI gpt-5.6-sol, Kiro, and Anthropic Claude Opus 5.5
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -103,6 +103,7 @@ __KERNEL_RCSID(0, "$NetBSD$");
 #define WARPGFX_CURSOR_RED_MASK		0xf800U
 
 #define WARPGFX_BLT_WAIT_LOOPS		1000000
+#define WARPGFX_CLOCK_SETTLE_POLLS	1000
 
 struct warpgfx_part {
 	bool valid;
@@ -128,11 +129,12 @@ struct warpgfx_mode {
 	uint32_t v_timing_1;
 	uint32_t v_timing_2;
 	uint32_t hv_total;
+	uint32_t sync;
 };
 
 #if WARPGFX_MODE == WARPGFX_MODE_480P
 static const struct warpgfx_mode warpgfx_console_mode = {
-	.name = "640x480p75",
+	.name = "640x480p60",
 	.width = 640,
 	.height = 480,
 	.depth = WARPGFX_DEPTH,
@@ -147,6 +149,7 @@ static const struct warpgfx_mode warpgfx_console_mode = {
 	.v_timing_1 = WARPGFX_480P_V_TIMING_1,
 	.v_timing_2 = WARPGFX_480P_V_TIMING_2,
 	.hv_total = WARPGFX_480P_HV_TOTAL,
+	.sync = WARPGFX_480P_SYNC,
 };
 #elif WARPGFX_MODE == WARPGFX_MODE_600P
 static const struct warpgfx_mode warpgfx_console_mode = {
@@ -165,6 +168,7 @@ static const struct warpgfx_mode warpgfx_console_mode = {
 	.v_timing_1 = WARPGFX_600P_V_TIMING_1,
 	.v_timing_2 = WARPGFX_600P_V_TIMING_2,
 	.hv_total = WARPGFX_600P_HV_TOTAL,
+	.sync = WARPGFX_600P_SYNC,
 };
 #elif WARPGFX_MODE == WARPGFX_MODE_720P
 static const struct warpgfx_mode warpgfx_console_mode = {
@@ -183,6 +187,7 @@ static const struct warpgfx_mode warpgfx_console_mode = {
 	.v_timing_1 = WARPGFX_720P_V_TIMING_1,
 	.v_timing_2 = WARPGFX_720P_V_TIMING_2,
 	.hv_total = WARPGFX_720P_HV_TOTAL,
+	.sync = WARPGFX_720P_SYNC,
 };
 #elif WARPGFX_MODE == WARPGFX_MODE_768P
 static const struct warpgfx_mode warpgfx_console_mode = {
@@ -201,6 +206,7 @@ static const struct warpgfx_mode warpgfx_console_mode = {
 	.v_timing_1 = WARPGFX_768P_V_TIMING_1,
 	.v_timing_2 = WARPGFX_768P_V_TIMING_2,
 	.hv_total = WARPGFX_768P_HV_TOTAL,
+	.sync = WARPGFX_768P_SYNC,
 };
 #elif WARPGFX_MODE == WARPGFX_MODE_1024P
 static const struct warpgfx_mode warpgfx_console_mode = {
@@ -219,6 +225,7 @@ static const struct warpgfx_mode warpgfx_console_mode = {
 	.v_timing_1 = WARPGFX_1024P_V_TIMING_1,
 	.v_timing_2 = WARPGFX_1024P_V_TIMING_2,
 	.hv_total = WARPGFX_1024P_HV_TOTAL,
+	.sync = WARPGFX_1024P_SYNC,
 };
 #else /* WARPGFX_MODE == WARPGFX_MODE_1080P */
 static const struct warpgfx_mode warpgfx_console_mode = {
@@ -237,8 +244,29 @@ static const struct warpgfx_mode warpgfx_console_mode = {
 	.v_timing_1 = WARPGFX_1080P_V_TIMING_1,
 	.v_timing_2 = WARPGFX_1080P_V_TIMING_2,
 	.hv_total = WARPGFX_1080P_HV_TOTAL,
+	.sync = WARPGFX_1080P_SYNC,
 };
 #endif
+
+/*
+ * Named fixed text geometries, centred with RI_CENTER.  With the optional
+ * fonts in extras/wscons-fonts they fill these console modes exactly:
+ * 80x24 is 1280x720 with a 16x30 font, 80x27 is 1920x1080 with a 24x40
+ * font, and 80x30 is 640x480 with an 8x16 font.  80x25 is the classic
+ * VGA/ANSI geometry, centred in every mode.  A font too large for the
+ * requested geometry gets the largest geometry that fits instead.
+ */
+static const struct {
+	const char *name;
+	int rows;
+} warpgfx_fixed_screens[] = {
+	{ "80x24", 24 },
+	{ "80x25", 25 },
+	{ "80x27", 27 },
+	{ "80x30", 30 },
+};
+#define WARPGFX_NFIXED		__arraycount(warpgfx_fixed_screens)
+#define WARPGFX_FIXED_COLS	80
 
 struct warpgfx_softc {
 	device_t sc_dev;
@@ -258,10 +286,9 @@ struct warpgfx_softc {
 	struct vcons_screen sc_console_screen;
 	struct vcons_data sc_vd;
 	struct wsscreen_descr sc_defaultscreen;
-	struct wsscreen_descr sc_80x25screen;
-	struct wsscreen_descr sc_80x27screen;
+	struct wsscreen_descr sc_fixedscreen[WARPGFX_NFIXED];
 	struct wsscreen_list sc_screenlist;
-	const struct wsscreen_descr *sc_screens[3];
+	const struct wsscreen_descr *sc_screens[1 + WARPGFX_NFIXED];
 
 	u_int sc_wsmode;
 	u_int sc_width;
@@ -293,6 +320,7 @@ static void warpgfx_set_mode(struct warpgfx_softc *);
 static void warpgfx_dump_regs(struct warpgfx_softc *, const char *);
 #endif
 static void warpgfx_attach_wsdisplay(struct warpgfx_softc *);
+static int warpgfx_fixed_rows(const struct wsscreen_descr *);
 static void warpgfx_init_screen(void *, struct vcons_screen *, int, long *);
 static void warpgfx_do_cursor(struct rasops_info *);
 
@@ -525,12 +553,30 @@ warpgfx_reset(struct warpgfx_softc *sc)
 {
 	u_int i;
 
-	/* Sequence used by csgfx.card before enabling the first mode. */
+	/*
+	 * NetBSD installs no handler for the Warp vertical-blank interrupt.
+	 * csgfx.card calls SetInterrupt(FALSE) before every mode change and
+	 * when it hands the display back to the native chipset; do the same
+	 * so an interrupt left enabled before the kernel started cannot keep
+	 * INT2 asserted.
+	 */
+	WARPGFX_WRITE(sc, WARPGFX_REG_INTERRUPT_CONTROL,
+	    WARPGFX_INTERRUPT_VBLANK_OFF);
+
+	/* Sequence used by csgfx.card InitCard before the first mode. */
 	WARPGFX_WRITE(sc, WARPGFX_REG_COMMAND_RESET, 0);
 	for (i = 0; i < 0x0c00; i++)
 		WARPGFX_WRITE(sc, WARPGFX_REG_COMMAND, 0);
 }
 
+/*
+ * Select the mode's pixel clock and wait for it to report ready.
+ *
+ * This follows the csgfx.card 22.96 SetSwitch(TRUE) path, which changes
+ * the clock first and then reprograms the mode.  The commit pulse written
+ * by warpgfx_set_mode() therefore follows any clock change, as the 22.96
+ * SetClock() requires.
+ */
 static bool
 warpgfx_set_clock(struct warpgfx_softc *sc)
 {
@@ -547,6 +593,20 @@ warpgfx_set_clock(struct warpgfx_softc *sc)
 
 	WARPGFX_WRITE(sc, WARPGFX_REG_CLOCK_CONTROL,
 	    mode->clock_control);
+
+	/*
+	 * csgfx.card polls for ready immediately after the write.  Give the
+	 * clock generator a bounded chance (at most about 10 ms) to drop the
+	 * previous clock's ready state first, so a stale ready bit cannot end
+	 * the wait before the new clock has locked.
+	 */
+	for (i = 0; i < WARPGFX_CLOCK_SETTLE_POLLS; i++) {
+		if ((WARPGFX_READ(sc, WARPGFX_REG_CLOCK_STATUS) &
+		    WARPGFX_CLOCK_READY) == 0)
+			break;
+		delay(10);
+	}
+
 	for (i = 0; i < 1000000; i++) {
 		if ((WARPGFX_READ(sc, WARPGFX_REG_CLOCK_STATUS) &
 		    WARPGFX_CLOCK_READY) != 0)
@@ -565,10 +625,11 @@ static void
 warpgfx_set_mode(struct warpgfx_softc *sc)
 {
 	const struct warpgfx_mode *mode = sc->sc_mode;
-	uint32_t value;
+	uint32_t commit, value;
 
+	/* Unscaled output; the hardware sprite is unused (SetSprite(FALSE)). */
 	value = WARPGFX_READ(sc, WARPGFX_REG_SCALE_CONTROL);
-	value &= ~0x0000003cU;
+	value &= ~(WARPGFX_SCALE_FACTOR_MASK | WARPGFX_SCALE_SPRITE_ENABLE);
 	WARPGFX_WRITE(sc, WARPGFX_REG_SCALE_CONTROL, value);
 
 	WARPGFX_WRITE(sc, WARPGFX_REG_OUTPUT_AUX, 0);
@@ -581,8 +642,13 @@ warpgfx_set_mode(struct warpgfx_softc *sc)
 	WARPGFX_WRITE(sc, WARPGFX_REG_V_TIMING_1, mode->v_timing_1);
 	WARPGFX_WRITE(sc, WARPGFX_REG_V_TIMING_2, mode->v_timing_2);
 	WARPGFX_WRITE(sc, WARPGFX_REG_HV_TOTAL, mode->hv_total);
-	WARPGFX_WRITE(sc, WARPGFX_REG_MODE_COMMIT, WARPGFX_MODE_COMMIT);
-	WARPGFX_WRITE(sc, WARPGFX_REG_MODE_COMMIT, WARPGFX_MODE_ENABLE);
+
+	/* Commit sequence and value layout from the csgfx.card 22.96 SetGC. */
+	commit = WARPGFX_MODE_FB_SELECT | WARPGFX_MODE_FORMAT_16 |
+	    (mode->sync & WARPGFX_MODE_SYNC_MASK);
+	WARPGFX_WRITE(sc, WARPGFX_REG_MODE_COMMIT,
+	    commit | WARPGFX_MODE_COMMIT_PULSE);
+	WARPGFX_WRITE(sc, WARPGFX_REG_MODE_COMMIT, commit);
 
 	bus_space_barrier(sc->sc_regt, sc->sc_regh, 0,
 	    WARPGFX_REG_SIZE, BUS_SPACE_BARRIER_WRITE);
@@ -642,6 +708,7 @@ warpgfx_attach_wsdisplay(struct warpgfx_softc *sc)
 	struct rasops_info *ri;
 	struct wsemuldisplaydev_attach_args ws_aa;
 	long defattr;
+	u_int i;
 
 #ifdef WARPGFX_CONSOLE
 	sc->sc_isconsole = true;
@@ -653,19 +720,17 @@ warpgfx_attach_wsdisplay(struct warpgfx_softc *sc)
 	    "default", 0, 0, NULL, 8, 16,
 	    WSSCREEN_WSCOLORS | WSSCREEN_HILIT, NULL
 	};
-	sc->sc_80x25screen = (struct wsscreen_descr) {
-	    "80x25", 80, 25, NULL, 8, 16,
-	    WSSCREEN_WSCOLORS | WSSCREEN_HILIT, NULL
-	};
-	sc->sc_80x27screen = (struct wsscreen_descr) {
-	    "80x27", 80, 27, NULL, 8, 16,
-	    WSSCREEN_WSCOLORS | WSSCREEN_HILIT, NULL
-	};
 	sc->sc_screens[0] = &sc->sc_defaultscreen;
-	sc->sc_screens[1] = &sc->sc_80x25screen;
-	sc->sc_screens[2] = &sc->sc_80x27screen;
+	for (i = 0; i < WARPGFX_NFIXED; i++) {
+		sc->sc_fixedscreen[i] = (struct wsscreen_descr) {
+		    warpgfx_fixed_screens[i].name, WARPGFX_FIXED_COLS,
+		    warpgfx_fixed_screens[i].rows, NULL, 8, 16,
+		    WSSCREEN_WSCOLORS | WSSCREEN_HILIT, NULL
+		};
+		sc->sc_screens[i + 1] = &sc->sc_fixedscreen[i];
+	}
 	sc->sc_screenlist = (struct wsscreen_list) {
-	    3, sc->sc_screens
+	    __arraycount(sc->sc_screens), sc->sc_screens
 	};
 	sc->sc_wsmode = WSDISPLAYIO_MODE_EMUL;
 
@@ -684,10 +749,10 @@ warpgfx_attach_wsdisplay(struct warpgfx_softc *sc)
 	sc->sc_defaultscreen.ncols = ri->ri_cols;
 	sc->sc_defaultscreen.fontwidth = ri->ri_font->fontwidth;
 	sc->sc_defaultscreen.fontheight = ri->ri_font->fontheight;
-	sc->sc_80x25screen.textops = &ri->ri_ops;
-	sc->sc_80x25screen.capabilities = ri->ri_caps;
-	sc->sc_80x27screen.textops = &ri->ri_ops;
-	sc->sc_80x27screen.capabilities = ri->ri_caps;
+	for (i = 0; i < WARPGFX_NFIXED; i++) {
+		sc->sc_fixedscreen[i].textops = &ri->ri_ops;
+		sc->sc_fixedscreen[i].capabilities = ri->ri_caps;
+	}
 
 	if (sc->sc_isconsole) {
 		vcons_redraw_screen(&sc->sc_console_screen);
@@ -705,25 +770,44 @@ warpgfx_attach_wsdisplay(struct warpgfx_softc *sc)
 	config_found(sc->sc_dev, &ws_aa, wsemuldisplaydevprint, CFARGS_NONE);
 }
 
+/*
+ * Rows of a named fixed geometry, or 0 for the full-screen default.  Match
+ * by name, not by descriptor: with WSSCREEN_RESIZE wsdisplay gives every
+ * screen its own copy of the descriptor, and vcons overwrites the copy's
+ * nrows and ncols with whatever the last loaded font allowed.
+ */
+static int
+warpgfx_fixed_rows(const struct wsscreen_descr *type)
+{
+	u_int i;
+
+	if (type == NULL || type->name == NULL)
+		return 0;
+	for (i = 0; i < WARPGFX_NFIXED; i++) {
+		if (strcmp(type->name, warpgfx_fixed_screens[i].name) == 0)
+			return warpgfx_fixed_screens[i].rows;
+	}
+	return 0;
+}
+
 static void
 warpgfx_init_screen(void *cookie, struct vcons_screen *scr, int existing,
     long *defattr)
 {
 	struct warpgfx_softc *sc = cookie;
 	struct rasops_info *ri = &scr->scr_ri;
-	bool fixed_geometry;
+	int fixed_rows;
 
 	scr->scr_flags |= VCONS_LOADFONT;
 	wsfont_init();
-	fixed_geometry = scr->scr_type != NULL &&
-	    scr->scr_type != &sc->sc_defaultscreen;
+	fixed_rows = warpgfx_fixed_rows(scr->scr_type);
 
 	ri->ri_bits = bus_space_vaddr(sc->sc_fbt, sc->sc_fbh);
 	ri->ri_depth = sc->sc_depth;
 	ri->ri_width = sc->sc_width;
 	ri->ri_height = sc->sc_height;
 	ri->ri_stride = sc->sc_stride;
-	ri->ri_flg = fixed_geometry ? RI_CENTER : 0;
+	ri->ri_flg = fixed_rows != 0 ? RI_CENTER : 0;
 
 	/* csgfx RGB format 10 is big-endian R5G6B5. */
 	ri->ri_rnum = 5;
@@ -733,14 +817,19 @@ warpgfx_init_screen(void *cookie, struct vcons_screen *scr, int existing,
 	ri->ri_gpos = 5;
 	ri->ri_bpos = 0;
 
-	if (fixed_geometry) {
-		rasops_init(ri, scr->scr_type->nrows,
-		    scr->scr_type->ncols);
-	} else {
+	if (fixed_rows != 0)
+		rasops_init(ri, fixed_rows, WARPGFX_FIXED_COLS);
+	else
 		rasops_init(ri, 0, 0);
-	}
-	ri->ri_caps = WSSCREEN_WSCOLORS;
-	if (!fixed_geometry) {
+	/*
+	 * rasops shrinks the geometry when a loaded font does not fit.
+	 * WSSCREEN_RESIZE makes vcons and wsdisplay resize the terminal
+	 * emulator to match; without it the emulator keeps the old size
+	 * and overruns the vcons text buffers (MMU fault in
+	 * vcons_eraserows).
+	 */
+	ri->ri_caps = WSSCREEN_WSCOLORS | WSSCREEN_RESIZE;
+	if (fixed_rows == 0) {
 		rasops_reconfig(ri,
 		    ri->ri_height / ri->ri_font->fontheight,
 		    ri->ri_width / ri->ri_font->fontwidth);

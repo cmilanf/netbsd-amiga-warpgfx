@@ -1,2 +1,2 @@
-babc6b5f5066c2a740068c99bbb33a749153e6c96e6dd58bd03bd408fa316a4c  netbsd-src-warpgfx.patch
+e3e7d6894dac3e3916ffe7864314c58c681ca160b544350e8e6cfd2ac136a6b2  netbsd-src-warpgfx.patch
 cf41dbf2b0a347b2cca3273ab0adc69989ae8092669fa81c410626c643a5f478  netbsd-xsrc-warpgfx-wsfb-exa.patch
